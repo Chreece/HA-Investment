@@ -14,8 +14,13 @@ from homeassistant.helpers.storage import Store
 from .const import (
     DEFAULT_BASE_CURRENCY,
     DEFAULT_INDICATION_PREFERENCES,
+    DEFAULT_INCOGNITO_REVEAL_SECONDS,
+    DEFAULT_INDICATION_LEGAL_REGION,
     DEFAULT_UI_LANGUAGE,
     EXPOSABLE_ENTITY_METRICS,
+    INDICATION_DISCLAIMER_VERSION,
+    INDICATION_LEGAL_REGIONS,
+    MAX_INCOGNITO_REVEAL_SECONDS,
     STORE_KEY,
     STORE_VERSION,
     SUPPORTED_UI_LANGUAGES,
@@ -71,6 +76,46 @@ class InvestmentStore:
             changed = True
         if "incognito" not in user:
             user["incognito"] = False
+            changed = True
+        try:
+            reveal_seconds = int(user.get("incognito_reveal_seconds", DEFAULT_INCOGNITO_REVEAL_SECONDS))
+        except (TypeError, ValueError):
+            reveal_seconds = DEFAULT_INCOGNITO_REVEAL_SECONDS
+        reveal_seconds = max(0, min(MAX_INCOGNITO_REVEAL_SECONDS, reveal_seconds))
+        if user.get("incognito_reveal_seconds") != reveal_seconds:
+            user["incognito_reveal_seconds"] = reveal_seconds
+            changed = True
+        if "developer_indicator_unlocked" not in user:
+            user["developer_indicator_unlocked"] = False
+            changed = True
+        try:
+            disclaimer_version = int(user.get("indication_disclaimer_version") or 0)
+        except (TypeError, ValueError):
+            disclaimer_version = 0
+        disclaimer_version = max(0, min(INDICATION_DISCLAIMER_VERSION, disclaimer_version))
+        if user.get("indication_disclaimer_version") != disclaimer_version:
+            user["indication_disclaimer_version"] = disclaimer_version
+            changed = True
+        accepted_at = user.get("indication_disclaimer_accepted_at")
+        if accepted_at is not None:
+            try:
+                accepted_at = int(accepted_at)
+            except (TypeError, ValueError):
+                accepted_at = None
+            if user.get("indication_disclaimer_accepted_at") != accepted_at:
+                user["indication_disclaimer_accepted_at"] = accepted_at
+                changed = True
+        region = str(user.get("indication_disclaimer_region") or "").strip().lower()
+        if region not in INDICATION_LEGAL_REGIONS:
+            region = None
+        if user.get("indication_disclaimer_region") != region:
+            user["indication_disclaimer_region"] = region
+            changed = True
+        disclaimer_language = str(user.get("indication_disclaimer_language") or "").strip().lower() or None
+        if disclaimer_language is not None and disclaimer_language != DEFAULT_UI_LANGUAGE and disclaimer_language not in SUPPORTED_UI_LANGUAGES:
+            disclaimer_language = None
+        if user.get("indication_disclaimer_language") != disclaimer_language:
+            user["indication_disclaimer_language"] = disclaimer_language
             changed = True
         raw_indication = user.get("indication_preferences")
         indication = dict(DEFAULT_INDICATION_PREFERENCES)
@@ -170,6 +215,12 @@ class InvestmentStore:
                 "base_currency": DEFAULT_BASE_CURRENCY,
                 "language": DEFAULT_UI_LANGUAGE,
                 "incognito": False,
+                "incognito_reveal_seconds": DEFAULT_INCOGNITO_REVEAL_SECONDS,
+                "developer_indicator_unlocked": False,
+                "indication_disclaimer_version": 0,
+                "indication_disclaimer_accepted_at": None,
+                "indication_disclaimer_region": None,
+                "indication_disclaimer_language": None,
                 "indication_preferences": dict(DEFAULT_INDICATION_PREFERENCES),
                 "exposed_entities": [],
                 "holdings": [],
@@ -204,8 +255,13 @@ class InvestmentStore:
         base_currency: str | None = None,
         language: str | None = None,
         incognito: bool | None = None,
+        incognito_reveal_seconds: int | None = None,
+        developer_indicator_unlocked: bool | None = None,
         indication_preferences: dict[str, Any] | None = None,
         exposed_entities: list[str] | None = None,
+        indication_disclaimer_version: int | None = None,
+        indication_disclaimer_region: str | None = None,
+        indication_disclaimer_language: str | None = None,
     ) -> dict[str, Any]:
         """Persist per-user display, indication and automation preferences."""
         async with self._lock:
@@ -216,11 +272,22 @@ class InvestmentStore:
                 user["language"] = language.lower()
             if incognito is not None:
                 user["incognito"] = bool(incognito)
+            if incognito_reveal_seconds is not None:
+                user["incognito_reveal_seconds"] = int(incognito_reveal_seconds)
+            if developer_indicator_unlocked is not None:
+                # One-way latch: once exposed for this HA user it cannot be reset
+                # through the public preference command.
+                user["developer_indicator_unlocked"] = bool(user.get("developer_indicator_unlocked")) or bool(developer_indicator_unlocked)
             if indication_preferences is not None:
                 user["indication_preferences"] = deepcopy(indication_preferences)
             if exposed_entities is not None:
                 selected = set(exposed_entities)
                 user["exposed_entities"] = [metric for metric in EXPOSABLE_ENTITY_METRICS if metric in selected]
+            if indication_disclaimer_version is not None:
+                user["indication_disclaimer_version"] = int(indication_disclaimer_version)
+                user["indication_disclaimer_accepted_at"] = int(time.time())
+                user["indication_disclaimer_region"] = str(indication_disclaimer_region or DEFAULT_INDICATION_LEGAL_REGION)
+                user["indication_disclaimer_language"] = str(indication_disclaimer_language or DEFAULT_UI_LANGUAGE)
             await self._store.async_save(self._data)
             return deepcopy(user)
 

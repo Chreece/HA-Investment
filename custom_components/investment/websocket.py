@@ -9,7 +9,17 @@ import voluptuous as vol
 from homeassistant.components import websocket_api
 from homeassistant.core import HomeAssistant
 
-from .const import DEFAULT_UI_LANGUAGE, DOMAIN, EXPOSABLE_ENTITY_METRICS, SUPPORTED_PERIODS, SUPPORTED_UI_LANGUAGES
+from .const import (
+    DEFAULT_INCOGNITO_REVEAL_SECONDS,
+    DEFAULT_UI_LANGUAGE,
+    DOMAIN,
+    EXPOSABLE_ENTITY_METRICS,
+    INDICATION_DISCLAIMER_VERSION,
+    INDICATION_LEGAL_REGIONS,
+    MAX_INCOGNITO_REVEAL_SECONDS,
+    SUPPORTED_PERIODS,
+    SUPPORTED_UI_LANGUAGES,
+)
 
 
 SHARED_ALLOCATION_SCHEMA = vol.Schema(
@@ -347,14 +357,19 @@ async def ws_remove(hass: HomeAssistant, connection, msg: dict[str, Any]) -> Non
         vol.Optional("base_currency"): vol.All(str, vol.Length(min=3, max=3)),
         vol.Optional("language"): vol.In((DEFAULT_UI_LANGUAGE, *SUPPORTED_UI_LANGUAGES)),
         vol.Optional("incognito"): bool,
+        vol.Optional("incognito_reveal_seconds"): vol.All(vol.Coerce(int), vol.Range(min=0, max=MAX_INCOGNITO_REVEAL_SECONDS)),
+        vol.Optional("developer_indicator_unlocked"): bool,
         vol.Optional("indication_preferences"): dict,
         vol.Optional("exposed_entities"): [vol.In(EXPOSABLE_ENTITY_METRICS)],
+        vol.Optional("indication_disclaimer_version"): vol.All(vol.Coerce(int), vol.Range(min=0, max=INDICATION_DISCLAIMER_VERSION)),
+        vol.Optional("indication_disclaimer_region"): vol.In(INDICATION_LEGAL_REGIONS),
+        vol.Optional("indication_disclaimer_language"): vol.In((DEFAULT_UI_LANGUAGE, *SUPPORTED_UI_LANGUAGES)),
     }
 )
 @websocket_api.async_response
 async def ws_preferences(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
     try:
-        preference_keys = {"base_currency", "language", "incognito", "indication_preferences", "exposed_entities"}
+        preference_keys = {"base_currency", "language", "incognito", "incognito_reveal_seconds", "developer_indicator_unlocked", "indication_preferences", "exposed_entities", "indication_disclaimer_version", "indication_disclaimer_region", "indication_disclaimer_language"}
         if not any(key in msg for key in preference_keys):
             raise ValueError("At least one preference is required")
         user = await _manager(hass).async_set_preferences(
@@ -362,8 +377,13 @@ async def ws_preferences(hass: HomeAssistant, connection, msg: dict[str, Any]) -
             base_currency=msg.get("base_currency"),
             language=msg.get("language"),
             incognito=msg.get("incognito"),
+            incognito_reveal_seconds=msg.get("incognito_reveal_seconds"),
+            developer_indicator_unlocked=msg.get("developer_indicator_unlocked"),
             indication_preferences=msg.get("indication_preferences"),
             exposed_entities=msg.get("exposed_entities"),
+            indication_disclaimer_version=msg.get("indication_disclaimer_version"),
+            indication_disclaimer_region=msg.get("indication_disclaimer_region"),
+            indication_disclaimer_language=msg.get("indication_disclaimer_language"),
         )
         connection.send_result(
             msg["id"],
@@ -371,8 +391,14 @@ async def ws_preferences(hass: HomeAssistant, connection, msg: dict[str, Any]) -
                 "base_currency": user["base_currency"],
                 "language": user.get("language", DEFAULT_UI_LANGUAGE),
                 "incognito": bool(user.get("incognito", False)),
+                "incognito_reveal_seconds": int(user.get("incognito_reveal_seconds", DEFAULT_INCOGNITO_REVEAL_SECONDS)),
+                "developer_indicator_unlocked": bool(user.get("developer_indicator_unlocked", False)),
                 "indication_preferences": user.get("indication_preferences") or {},
                 "exposed_entities": list(user.get("exposed_entities") or []),
+                "indication_disclaimer_version": int(user.get("indication_disclaimer_version") or 0),
+                "indication_disclaimer_accepted_at": user.get("indication_disclaimer_accepted_at"),
+                "indication_disclaimer_region": user.get("indication_disclaimer_region"),
+                "indication_disclaimer_language": user.get("indication_disclaimer_language"),
             },
         )
     except Exception as err:

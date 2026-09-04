@@ -26,10 +26,15 @@ from .currency import (
 from .const import (
     DEFAULT_HISTORY_CACHE_SECONDS,
     DEFAULT_INDICATION_PREFERENCES,
+    DEFAULT_INCOGNITO_REVEAL_SECONDS,
+    DEFAULT_INDICATION_LEGAL_REGION,
     DEFAULT_QUOTE_CACHE_SECONDS,
     DEFAULT_SEARCH_CACHE_SECONDS,
     DEFAULT_UI_LANGUAGE,
     EXPOSABLE_ENTITY_METRICS,
+    INDICATION_DISCLAIMER_VERSION,
+    INDICATION_LEGAL_REGIONS,
+    MAX_INCOGNITO_REVEAL_SECONDS,
     SIGNAL_ENTITY_EXPOSURE_CHANGED,
     SUPPORTED_UI_LANGUAGES,
     TRANSACTION_COST_TYPES,
@@ -49,7 +54,6 @@ from .ledger import (
     personal_quantity,
     personal_ratio,
     quantity_at,
-    shared_participant_summary,
     shared_quantity,
     transaction_timestamp,
     validate_transaction_date,
@@ -851,11 +855,16 @@ class InvestmentManager:
         base_currency: str | None = None,
         language: str | None = None,
         incognito: bool | None = None,
+        incognito_reveal_seconds: int | None = None,
+        developer_indicator_unlocked: bool | None = None,
         indication_preferences: dict[str, Any] | None = None,
         exposed_entities: list[str] | None = None,
+        indication_disclaimer_version: int | None = None,
+        indication_disclaimer_region: str | None = None,
+        indication_disclaimer_language: str | None = None,
     ) -> dict[str, Any]:
-        """Update private per-user display, indication and automation preferences."""
-        if base_currency is None and language is None and incognito is None and indication_preferences is None and exposed_entities is None:
+        """Update private per-user display, indication, automation and legal preferences."""
+        if base_currency is None and language is None and incognito is None and incognito_reveal_seconds is None and developer_indicator_unlocked is None and indication_preferences is None and exposed_entities is None and indication_disclaimer_version is None and indication_disclaimer_region is None and indication_disclaimer_language is None:
             raise ValueError("At least one preference is required")
         if base_currency is not None:
             if len(base_currency) != 3 or not base_currency.isalpha():
@@ -865,7 +874,33 @@ class InvestmentManager:
             language = language.lower()
             if language != DEFAULT_UI_LANGUAGE and language not in SUPPORTED_UI_LANGUAGES:
                 raise ValueError("Unsupported investment UI language")
+        normalized_reveal_seconds = None
+        if incognito_reveal_seconds is not None:
+            try:
+                normalized_reveal_seconds = int(incognito_reveal_seconds)
+            except (TypeError, ValueError) as err:
+                raise ValueError("Incognito reveal duration must be a whole number of seconds") from err
+            if normalized_reveal_seconds < 0 or normalized_reveal_seconds > MAX_INCOGNITO_REVEAL_SECONDS:
+                raise ValueError(f"Incognito reveal duration must be between 0 and {MAX_INCOGNITO_REVEAL_SECONDS} seconds")
         normalized_indication = None if indication_preferences is None else self._validated_indication_preferences(indication_preferences)
+        normalized_disclaimer = None
+        normalized_disclaimer_region = None
+        normalized_disclaimer_language = None
+        if indication_disclaimer_version is not None:
+            try:
+                normalized_disclaimer = int(indication_disclaimer_version)
+            except (TypeError, ValueError) as err:
+                raise ValueError("Invalid indication disclaimer version") from err
+            if normalized_disclaimer != INDICATION_DISCLAIMER_VERSION:
+                raise ValueError("The current investment indication legal terms must be acknowledged")
+            normalized_disclaimer_region = str(indication_disclaimer_region or "").strip().lower()
+            if normalized_disclaimer_region not in INDICATION_LEGAL_REGIONS:
+                raise ValueError("A supported legal region must be selected before accepting the investment indication terms")
+            normalized_disclaimer_language = str(indication_disclaimer_language or language or DEFAULT_UI_LANGUAGE).strip().lower()
+            if normalized_disclaimer_language != DEFAULT_UI_LANGUAGE and normalized_disclaimer_language not in SUPPORTED_UI_LANGUAGES:
+                raise ValueError("Unsupported legal-terms language")
+        elif indication_disclaimer_region is not None or indication_disclaimer_language is not None:
+            raise ValueError("Legal region/language can only be stored together with acceptance of the current terms")
         normalized_exposed = None
         previous_exposed: list[str] | None = None
         if exposed_entities is not None:
@@ -882,8 +917,13 @@ class InvestmentManager:
             base_currency=base_currency,
             language=language,
             incognito=incognito,
+            incognito_reveal_seconds=normalized_reveal_seconds,
+            developer_indicator_unlocked=developer_indicator_unlocked,
             indication_preferences=normalized_indication,
             exposed_entities=normalized_exposed,
+            indication_disclaimer_version=normalized_disclaimer,
+            indication_disclaimer_region=normalized_disclaimer_region,
+            indication_disclaimer_language=normalized_disclaimer_language,
         )
         self._cache.clear_prefix(("portfolio", user_id))
         self._cache.clear_prefix(("scope_history", user_id))
@@ -1040,6 +1080,151 @@ class InvestmentManager:
             if settlement.asset_principal is not None: summary["asset_principal"] += settlement.asset_principal*trade_fx*ratio
         return summary
 
+    async def _shared_participant_statistics(
+        self,
+        holding: dict[str, Any],
+        target_currency: str,
+        *,
+        current_price: float | None,
+        previous_price: float | None,
+    ) -> list[dict[str, Any]]:
+        """Return compact per-participant economics without affecting owner totals.
+
+        Shared ownership is BUY-local.  Until explicit shared-person SELL records
+        exist, participant rows are intentionally buy-only: the portfolio owner's
+        SELL ledger must never consume another participant's units.
+        """
+        buckets: dict[str, dict[str, Any]] = {}
+        for tx in holding.get("transactions") or []:
+            if str(tx.get("type") or "buy") == "sell":
+                continue
+            net = max(0.0, float(tx.get("net_quantity", tx.get("quantity", 0)) or 0))
+            if net <= 1e-12:
+                continue
+            allocations = tx.get("shared_allocations") or []
+            if not allocations:
+                continue
+
+            trade_currency = self._canonical_currency(
+                tx.get("transaction_currency") or holding.get("currency") or target_currency
+            )
+            settlement_currency = self._canonical_currency(
+                tx.get("settlement_currency") or tx.get("fee_currency") or trade_currency
+            )
+            trade_fx = await self._transaction_fx_rate(tx, trade_currency, target_currency)
+            settlement_fx = await self._transaction_fx_rate(tx, settlement_currency, target_currency)
+            costs = tx.get("costs") or {}
+            explicit_costs_native = sum(
+                max(0.0, float(costs.get(key) or 0)) for key in TRANSACTION_COST_TYPES
+            )
+            gross = max(0.0, float(tx.get("gross_quantity", net) or 0))
+            native_unit = tx.get("buy_price")
+            native_principal = tx.get("investment_total")
+            native_gross = tx.get("gross_trade_total")
+            trade_to_settle = settlement_fx and (trade_fx / settlement_fx)
+            if native_principal is None and native_gross is not None:
+                native_principal = (
+                    float(native_gross) * trade_to_settle if trade_to_settle else float(native_gross)
+                )
+            principal_trade = (
+                float(native_principal) / trade_to_settle
+                if native_principal is not None and trade_to_settle
+                else native_principal
+            )
+            settlement = derive_purchase_settlement(
+                gross_quantity=gross,
+                net_quantity=net,
+                average_buy_price=native_unit,
+                investment_total=principal_trade,
+                gross_trade_total=native_gross,
+            )
+
+            for allocation in allocations:
+                try:
+                    name = str(allocation.get("participant") or "").strip()
+                    quantity = max(0.0, float(allocation.get("quantity") or 0))
+                except (TypeError, ValueError, AttributeError):
+                    continue
+                if not name or quantity <= 1e-12:
+                    continue
+                ratio = min(1.0, quantity / net)
+                key = name.casefold()
+                bucket = buckets.setdefault(
+                    key,
+                    {
+                        "participant": name,
+                        "records": [],
+                        "transaction_cost_total": 0.0,
+                        "asset_fee_value": 0.0,
+                    },
+                )
+                principal = (
+                    float(native_principal) * settlement_fx * ratio
+                    if native_principal is not None
+                    else None
+                )
+                explicit_costs = explicit_costs_native * settlement_fx * ratio
+                asset_fee_value = settlement.withheld_asset_value * trade_fx * ratio
+                bucket["transaction_cost_total"] += explicit_costs
+                bucket["asset_fee_value"] += asset_fee_value
+                bucket["records"].append(
+                    {
+                        **deepcopy(tx),
+                        "id": f"{tx.get('id') or ''}:shared:{key}",
+                        "type": "buy",
+                        "sort_ts": transaction_timestamp(tx),
+                        "quantity": quantity,
+                        "cash_principal": principal,
+                        "explicit_costs": explicit_costs,
+                    }
+                )
+
+        rows: list[dict[str, Any]] = []
+        for bucket in buckets.values():
+            ledger = fifo_summary(bucket["records"], current_price=current_price)
+            quantity = float(ledger.quantity)
+            value = current_price * quantity if current_price is not None else None
+            previous_value = previous_price * quantity if previous_price is not None else None
+            today_change = (value - previous_value) if value is not None and previous_value is not None else None
+            today_pct = (
+                (current_price / previous_price - 1.0) * 100.0
+                if current_price is not None and previous_price not in (None, 0)
+                else None
+            )
+            cost_basis = ledger.remaining_cost_basis
+            unrealized = value - cost_basis if value is not None and cost_basis is not None else None
+            realized = 0.0
+            total_pnl = unrealized
+            pnl_pct = (
+                total_pnl / ledger.total_buy_cash * 100.0
+                if total_pnl is not None and ledger.total_buy_cash > 0
+                else None
+            )
+            rows.append(
+                {
+                    "participant": bucket["participant"],
+                    "quantity": round(quantity, 12),
+                    "value": value,
+                    "previous_value": previous_value,
+                    "today_change": today_change,
+                    "today_pct": today_pct,
+                    "cost_basis": cost_basis,
+                    "cost_basis_complete": ledger.cost_basis_complete,
+                    "transaction_cost_total": bucket["transaction_cost_total"],
+                    "asset_fee_value": bucket["asset_fee_value"],
+                    "other_cost_total": bucket["transaction_cost_total"] + bucket["asset_fee_value"],
+                    "realized_pnl": realized,
+                    "unrealized_pnl": unrealized,
+                    "pnl": total_pnl,
+                    "pnl_pct": pnl_pct,
+                    "lifetime_buy_cash": ledger.total_buy_cash,
+                    "shared_sell_tracking": False,
+                }
+            )
+        rows.sort(key=lambda row: str(row.get("participant") or "").casefold())
+        return rows
+
+
     async def async_portfolio(
         self, user_id: str, *, force: bool = False, refresh_market: bool = False
     ) -> dict[str, Any]:
@@ -1085,7 +1270,10 @@ class InvestmentManager:
                 )
                 quantity = float(ledger.quantity)
                 shared_quantity_total = sum(shared_quantity(tx) for tx in (holding.get("transactions") or []))
-                shared_participants = shared_participant_summary(holding.get("transactions") or [])
+                previous_price_base = quote.previous_close * fx if quote.previous_close is not None else None
+                shared_participants = await self._shared_participant_statistics(
+                    holding, base, current_price=current_price_base, previous_price=previous_price_base
+                )
                 custody_quantity = quantity + shared_quantity_total
                 # Keep persisted aggregate quantity self-healing for legacy data,
                 # but the immutable transaction ledger is authoritative.
@@ -1217,7 +1405,9 @@ class InvestmentManager:
                             "quantity": float(ledger.quantity),
                             "personal_quantity": float(ledger.quantity),
                             "shared_quantity": sum(shared_quantity(tx) for tx in (holding.get("transactions") or [])),
-                            "shared_participants": shared_participant_summary(holding.get("transactions") or []),
+                            "shared_participants": await self._shared_participant_statistics(
+                                holding, base, current_price=None, previous_price=None
+                            ),
                             "custody_quantity": float(ledger.quantity) + sum(shared_quantity(tx) for tx in (holding.get("transactions") or [])),
                             "base_currency": base,
                             "cost_basis": ledger.remaining_cost_basis,
@@ -1442,6 +1632,14 @@ class InvestmentManager:
             "base_currency": base,
             "language": str(user.get("language") or DEFAULT_UI_LANGUAGE),
             "incognito": bool(user.get("incognito", False)),
+            "incognito_reveal_seconds": int(user.get("incognito_reveal_seconds", DEFAULT_INCOGNITO_REVEAL_SECONDS)),
+            "developer_indicator_unlocked": bool(user.get("developer_indicator_unlocked", False)),
+            "indication_disclaimer_version": int(user.get("indication_disclaimer_version") or 0),
+            "indication_disclaimer_accepted_at": user.get("indication_disclaimer_accepted_at"),
+            "indication_disclaimer_region": user.get("indication_disclaimer_region"),
+            "indication_disclaimer_language": user.get("indication_disclaimer_language"),
+            "required_indication_disclaimer_version": INDICATION_DISCLAIMER_VERSION,
+            "supported_indication_legal_regions": list(INDICATION_LEGAL_REGIONS),
             "indication_preferences": deepcopy(user.get("indication_preferences") or DEFAULT_INDICATION_PREFERENCES),
             "exposed_entities": list(user.get("exposed_entities") or []),
             "total": total,
@@ -1585,7 +1783,7 @@ class InvestmentManager:
                 "using their supplied market metrics, portfolio exposure and overlap evidence, while respecting the "
                 "user preferences. Do not invent news, fundamentals, financial statements, forecasts or candidates. "
                 "Return JSON only with keys summary and ranking. ranking is an array with provider, provider_id, "
-                "score (0-100), action (buy|watch|avoid), suggested_amount (number or null), and reason."
+                "score (0-100), action (consider|watch|avoid), suggested_amount (number or null), and reason."
             )
         prompt = (
             f"{task}\nUSER_PREFERENCES={preferences}.\n"
@@ -1873,6 +2071,15 @@ class InvestmentManager:
             else max_candidate_pct / 100.0
         )
 
+        user = await self.store.async_user(user_id)
+        if not bool(user.get("developer_indicator_unlocked", False)):
+            raise ValueError("This function is not enabled for this user")
+        if int(user.get("indication_disclaimer_version") or 0) < INDICATION_DISCLAIMER_VERSION:
+            raise ValueError("The investment indication legal terms must be acknowledged before analysis")
+        accepted_region = str(user.get("indication_disclaimer_region") or "").strip().lower()
+        if accepted_region not in INDICATION_LEGAL_REGIONS:
+            raise ValueError("A legal region must be selected and accepted before investment indication analysis")
+
         remembered = self._validated_indication_preferences({
             "scope": scope, "mode": mode, "amount": amount, "category": category,
             "ai_task_entity_id": ai_task_entity_id, "risk_tolerance": risk_tolerance,
@@ -1884,7 +2091,6 @@ class InvestmentManager:
         await self.store.async_set_preferences(user_id, indication_preferences=remembered)
         self._cache.clear_prefix(("portfolio", user_id))
 
-        user = await self.store.async_user(user_id)
         base = self._canonical_currency(user.get("base_currency") or "EUR")
         portfolio = await self.async_portfolio(user_id)
         live_holdings = portfolio.get("holdings") or []

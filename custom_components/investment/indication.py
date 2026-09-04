@@ -861,7 +861,7 @@ def sanitize_ai_ranking(
     risk_tolerance: str = "medium",
 ) -> dict[str, float | None]:
     """Apply untrusted AI Task output under deterministic hard limits."""
-    valid_actions = {"buy", "watch", "avoid"}
+    valid_actions = {"consider", "watch", "avoid"}
     known = {
         (str(item.get("provider") or ""), str(item.get("provider_id") or "")): item
         for item in results
@@ -889,10 +889,12 @@ def sanitize_ai_ranking(
                 ai_score = math.nan
             item["ai_score"] = round(_clip(ai_score, 0.0, 100.0), 2) if math.isfinite(ai_score) else None
             action = str(raw.get("action") or "watch").strip().lower()
+            if action == "buy":  # compatibility with older AI responses; do not present a direct buy instruction
+                action = "consider"
             item["ai_action"] = action if action in valid_actions else "watch"
             item["ai_reason"] = str(raw.get("reason") or "").strip()[:500]
             proposed = 0.0
-            if amount is not None and item["ai_action"] == "buy":
+            if amount is not None and item["ai_action"] == "consider":
                 try:
                     parsed = float(raw.get("suggested_amount"))
                     if math.isfinite(parsed) and parsed > 0:
