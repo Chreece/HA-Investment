@@ -12,9 +12,9 @@
     "websocket_api"
   ],
   "documentation": "https://github.com/Chreece/HA-Investment",
+  "integration_type": "service",
   "iot_class": "cloud_polling",
   "issue_tracker": "https://github.com/Chreece/HA-Investment/issues",
   "requirements": [],
-  "version": "2026.9.1b1",
-  "integration_type": "service"
+  "version": "2026.9.1b1"
 }
