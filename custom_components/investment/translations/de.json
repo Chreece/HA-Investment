@@ -1,0 +1,48 @@
+{
+  "title": "HA Investment",
+  "config": {
+    "step": {
+      "user": {
+        "title": "HA Investment einrichten",
+        "description": "Erstelle pro Home-Assistant-Benutzer ein privates Investmentportfolio mit kostenlosen Marktdaten. Kein kostenpflichtiger API-Schlüssel erforderlich."
+      }
+    },
+    "abort": {
+      "single_instance_allowed": "Es wird nur eine HA-Investment-Instanz benötigt. Jeder Home-Assistant-Benutzer erhält ein privates Portfolio."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "portfolio_value": {
+        "name": "Portfoliowert"
+      },
+      "today_change": {
+        "name": "Heutige Änderung"
+      },
+      "today_change_percent": {
+        "name": "Heutige Änderung %"
+      },
+      "invested_principal": {
+        "name": "Investiertes Kapital"
+      },
+      "current_cost_basis": {
+        "name": "Aktuelle Kostenbasis"
+      },
+      "other_costs": {
+        "name": "Sonstige Kosten"
+      },
+      "asset_fees": {
+        "name": "Asset-Gebühren"
+      },
+      "total_pnl": {
+        "name": "Gesamt G/V"
+      },
+      "total_pnl_percent": {
+        "name": "Gesamt G/V %"
+      },
+      "holding_count": {
+        "name": "Anzahl Positionen"
+      }
+    }
+  }
+}

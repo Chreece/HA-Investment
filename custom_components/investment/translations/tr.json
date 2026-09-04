@@ -1,0 +1,48 @@
+{
+  "title": "HA Investment",
+  "config": {
+    "step": {
+      "user": {
+        "title": "HA Investment kurulumu",
+        "description": "Ücretsiz piyasa verileriyle kullanıcı başına özel yatırım portföyü oluşturun. Ücretli API anahtarı gerekmez."
+      }
+    },
+    "abort": {
+      "single_instance_allowed": "Tek bir HA Investment örneği yeterlidir. Her Home Assistant kullanıcısının özel portföyü olur."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "portfolio_value": {
+        "name": "Portföy değeri"
+      },
+      "today_change": {
+        "name": "Bugünkü değişim"
+      },
+      "today_change_percent": {
+        "name": "Bugünkü değişim %"
+      },
+      "invested_principal": {
+        "name": "Yatırılan ana para"
+      },
+      "current_cost_basis": {
+        "name": "Güncel maliyet tabanı"
+      },
+      "other_costs": {
+        "name": "Diğer maliyetler"
+      },
+      "asset_fees": {
+        "name": "Varlık ücretleri"
+      },
+      "total_pnl": {
+        "name": "Toplam K/Z"
+      },
+      "total_pnl_percent": {
+        "name": "Toplam K/Z %"
+      },
+      "holding_count": {
+        "name": "Pozisyon sayısı"
+      }
+    }
+  }
+}

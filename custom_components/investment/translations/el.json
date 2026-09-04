@@ -1,0 +1,48 @@
+{
+  "title": "HA Investment",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Ρύθμιση HA Investment",
+        "description": "Δημιούργησε ιδιωτικό επενδυτικό χαρτοφυλάκιο ανά χρήστη με δωρεάν δεδομένα αγοράς. Δεν απαιτείται πληρωμένο API."
+      }
+    },
+    "abort": {
+      "single_instance_allowed": "Χρειάζεται μόνο μία εγκατάσταση HA Investment. Κάθε χρήστης του Home Assistant έχει ιδιωτικό χαρτοφυλάκιο."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "portfolio_value": {
+        "name": "Αξία χαρτοφυλακίου"
+      },
+      "today_change": {
+        "name": "Σημερινή μεταβολή"
+      },
+      "today_change_percent": {
+        "name": "Σημερινή μεταβολή %"
+      },
+      "invested_principal": {
+        "name": "Επενδεδυμένο κεφάλαιο"
+      },
+      "current_cost_basis": {
+        "name": "Τρέχουσα βάση κόστους"
+      },
+      "other_costs": {
+        "name": "Άλλα κόστη"
+      },
+      "asset_fees": {
+        "name": "Χρεώσεις asset"
+      },
+      "total_pnl": {
+        "name": "Συνολικό Κ/Ζ"
+      },
+      "total_pnl_percent": {
+        "name": "Συνολικό Κ/Ζ %"
+      },
+      "holding_count": {
+        "name": "Πλήθος θέσεων"
+      }
+    }
+  }
+}

@@ -1,0 +1,48 @@
+{
+  "title": "HA Investment",
+  "config": {
+    "step": {
+      "user": {
+        "title": "HA Investment 설정",
+        "description": "무료 시장 데이터로 사용자별 비공개 투자 포트폴리오를 만듭니다. 유료 API 키가 필요하지 않습니다."
+      }
+    },
+    "abort": {
+      "single_instance_allowed": "HA Investment 인스턴스는 하나만 필요합니다. 각 Home Assistant 사용자는 비공개 포트폴리오를 가집니다."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "portfolio_value": {
+        "name": "포트폴리오 가치"
+      },
+      "today_change": {
+        "name": "오늘 변동"
+      },
+      "today_change_percent": {
+        "name": "오늘 변동 %"
+      },
+      "invested_principal": {
+        "name": "투자 원금"
+      },
+      "current_cost_basis": {
+        "name": "현재 비용 기준"
+      },
+      "other_costs": {
+        "name": "기타 비용"
+      },
+      "asset_fees": {
+        "name": "자산 수수료"
+      },
+      "total_pnl": {
+        "name": "총 손익"
+      },
+      "total_pnl_percent": {
+        "name": "총 손익 %"
+      },
+      "holding_count": {
+        "name": "보유 종목 수"
+      }
+    }
+  }
+}

@@ -1,0 +1,49 @@
+{
+  "title": "HA Investment",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Set up HA Investment",
+        "description": "Create a private per-user investment portfolio dashboard using free market-data sources. No paid API key is required."
+      }
+    },
+    "abort": {
+      "single_instance_allowed": "Only one HA Investment instance is needed. Each Home Assistant user gets a private portfolio.",
+      "managed_in_panel": "User preferences are managed in the Investments panel."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "portfolio_value": {
+        "name": "Portfolio value"
+      },
+      "today_change": {
+        "name": "Today change"
+      },
+      "today_change_percent": {
+        "name": "Today change %"
+      },
+      "invested_principal": {
+        "name": "Invested principal"
+      },
+      "current_cost_basis": {
+        "name": "Current cost basis"
+      },
+      "other_costs": {
+        "name": "Other costs"
+      },
+      "asset_fees": {
+        "name": "Asset fees"
+      },
+      "total_pnl": {
+        "name": "Total P/L"
+      },
+      "total_pnl_percent": {
+        "name": "Total P/L %"
+      },
+      "holding_count": {
+        "name": "Holding count"
+      }
+    }
+  }
+}

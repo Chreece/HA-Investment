@@ -1,0 +1,48 @@
+{
+  "title": "HA Investment",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Määritä HA Investment",
+        "description": "Luo käyttäjäkohtainen yksityinen sijoitussalkku ilmaisella markkinadatalla. Maksullista API:a ei tarvita."
+      }
+    },
+    "abort": {
+      "single_instance_allowed": "Vain yksi HA Investment -instanssi tarvitaan. Jokaisella Home Assistant -käyttäjällä on yksityinen salkku."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "portfolio_value": {
+        "name": "Salkun arvo"
+      },
+      "today_change": {
+        "name": "Päivän muutos"
+      },
+      "today_change_percent": {
+        "name": "Päivän muutos %"
+      },
+      "invested_principal": {
+        "name": "Sijoitettu pääoma"
+      },
+      "current_cost_basis": {
+        "name": "Nykyinen kustannuspohja"
+      },
+      "other_costs": {
+        "name": "Muut kulut"
+      },
+      "asset_fees": {
+        "name": "Omaisuuserän kulut"
+      },
+      "total_pnl": {
+        "name": "Kokonais P/L"
+      },
+      "total_pnl_percent": {
+        "name": "Kokonais P/L %"
+      },
+      "holding_count": {
+        "name": "Omistusten määrä"
+      }
+    }
+  }
+}

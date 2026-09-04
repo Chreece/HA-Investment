@@ -1,0 +1,48 @@
+{
+  "title": "HA Investment",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Настройка HA Investment",
+        "description": "Создайте приватный портфель для каждого пользователя с бесплатными рыночными данными. Платный API не требуется."
+      }
+    },
+    "abort": {
+      "single_instance_allowed": "Достаточно одной установки HA Investment. У каждого пользователя Home Assistant свой приватный портфель."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "portfolio_value": {
+        "name": "Стоимость портфеля"
+      },
+      "today_change": {
+        "name": "Изменение сегодня"
+      },
+      "today_change_percent": {
+        "name": "Изменение сегодня %"
+      },
+      "invested_principal": {
+        "name": "Инвестированный капитал"
+      },
+      "current_cost_basis": {
+        "name": "Текущая себестоимость"
+      },
+      "other_costs": {
+        "name": "Прочие расходы"
+      },
+      "asset_fees": {
+        "name": "Комиссии актива"
+      },
+      "total_pnl": {
+        "name": "Общий P/L"
+      },
+      "total_pnl_percent": {
+        "name": "Общий P/L %"
+      },
+      "holding_count": {
+        "name": "Количество позиций"
+      }
+    }
+  }
+}

@@ -1,0 +1,48 @@
+{
+  "title": "HA Investment",
+  "config": {
+    "step": {
+      "user": {
+        "title": "设置 HA Investment",
+        "description": "使用免费市场数据为每个用户创建私有投资组合，无需付费 API。"
+      }
+    },
+    "abort": {
+      "single_instance_allowed": "只需一个 HA Investment 实例。每个 Home Assistant 用户都有自己的私有投资组合。"
+    }
+  },
+  "entity": {
+    "sensor": {
+      "portfolio_value": {
+        "name": "投资组合价值"
+      },
+      "today_change": {
+        "name": "今日变化"
+      },
+      "today_change_percent": {
+        "name": "今日变化 %"
+      },
+      "invested_principal": {
+        "name": "已投资本金"
+      },
+      "current_cost_basis": {
+        "name": "当前成本基础"
+      },
+      "other_costs": {
+        "name": "其他成本"
+      },
+      "asset_fees": {
+        "name": "资产费用"
+      },
+      "total_pnl": {
+        "name": "总盈亏"
+      },
+      "total_pnl_percent": {
+        "name": "总盈亏 %"
+      },
+      "holding_count": {
+        "name": "持仓数量"
+      }
+    }
+  }
+}

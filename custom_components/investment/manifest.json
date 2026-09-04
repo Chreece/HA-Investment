@@ -1,0 +1,17 @@
+{
+  "domain": "investment",
+  "name": "HA Investment",
+  "codeowners": [],
+  "config_flow": true,
+  "dependencies": [
+    "frontend",
+    "http",
+    "panel_custom",
+    "websocket_api"
+  ],
+  "documentation": "https://github.com/Chreece/HA-Investment",
+  "iot_class": "cloud_polling",
+  "issue_tracker": "https://github.com/Chreece/HA-Investment/issues",
+  "requirements": [],
+  "version": "2026.09.01-beta01"
+}

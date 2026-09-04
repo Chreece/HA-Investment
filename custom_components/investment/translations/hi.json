@@ -1,0 +1,48 @@
+{
+  "title": "HA Investment",
+  "config": {
+    "step": {
+      "user": {
+        "title": "HA Investment सेट करें",
+        "description": "मुफ़्त बाज़ार डेटा से हर उपयोगकर्ता के लिए निजी निवेश पोर्टफोलियो बनाएँ। किसी भुगतान API की आवश्यकता नहीं है।"
+      }
+    },
+    "abort": {
+      "single_instance_allowed": "केवल एक HA Investment इंस्टेंस चाहिए। हर Home Assistant उपयोगकर्ता का निजी पोर्टफोलियो होता है।"
+    }
+  },
+  "entity": {
+    "sensor": {
+      "portfolio_value": {
+        "name": "पोर्टफोलियो मूल्य"
+      },
+      "today_change": {
+        "name": "आज का बदलाव"
+      },
+      "today_change_percent": {
+        "name": "आज का बदलाव %"
+      },
+      "invested_principal": {
+        "name": "निवेशित मूलधन"
+      },
+      "current_cost_basis": {
+        "name": "वर्तमान लागत आधार"
+      },
+      "other_costs": {
+        "name": "अन्य लागत"
+      },
+      "asset_fees": {
+        "name": "एसेट शुल्क"
+      },
+      "total_pnl": {
+        "name": "कुल लाभ/हानि"
+      },
+      "total_pnl_percent": {
+        "name": "कुल लाभ/हानि %"
+      },
+      "holding_count": {
+        "name": "होल्डिंग संख्या"
+      }
+    }
+  }
+}

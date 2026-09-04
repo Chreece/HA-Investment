@@ -1,0 +1,48 @@
+{
+  "title": "HA Investment",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Siapkan HA Investment",
+        "description": "Buat portofolio investasi privat per pengguna dengan data pasar gratis. Tidak memerlukan API berbayar."
+      }
+    },
+    "abort": {
+      "single_instance_allowed": "Hanya satu instans HA Investment yang diperlukan. Setiap pengguna Home Assistant mendapat portofolio privat."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "portfolio_value": {
+        "name": "Nilai portofolio"
+      },
+      "today_change": {
+        "name": "Perubahan hari ini"
+      },
+      "today_change_percent": {
+        "name": "Perubahan hari ini %"
+      },
+      "invested_principal": {
+        "name": "Modal yang diinvestasikan"
+      },
+      "current_cost_basis": {
+        "name": "Basis biaya saat ini"
+      },
+      "other_costs": {
+        "name": "Biaya lain"
+      },
+      "asset_fees": {
+        "name": "Biaya aset"
+      },
+      "total_pnl": {
+        "name": "Total untung/rugi"
+      },
+      "total_pnl_percent": {
+        "name": "Total untung/rugi %"
+      },
+      "holding_count": {
+        "name": "Jumlah posisi"
+      }
+    }
+  }
+}

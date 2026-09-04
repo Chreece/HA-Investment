@@ -1,0 +1,48 @@
+{
+  "title": "HA Investment",
+  "config": {
+    "step": {
+      "user": {
+        "title": "إعداد HA Investment",
+        "description": "أنشئ محفظة استثمار خاصة لكل مستخدم باستخدام بيانات سوق مجانية. لا يلزم API مدفوع."
+      }
+    },
+    "abort": {
+      "single_instance_allowed": "يلزم مثيل واحد فقط من HA Investment. يحصل كل مستخدم في Home Assistant على محفظة خاصة."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "portfolio_value": {
+        "name": "قيمة المحفظة"
+      },
+      "today_change": {
+        "name": "تغير اليوم"
+      },
+      "today_change_percent": {
+        "name": "تغير اليوم %"
+      },
+      "invested_principal": {
+        "name": "رأس المال المستثمر"
+      },
+      "current_cost_basis": {
+        "name": "أساس التكلفة الحالي"
+      },
+      "other_costs": {
+        "name": "تكاليف أخرى"
+      },
+      "asset_fees": {
+        "name": "رسوم الأصل"
+      },
+      "total_pnl": {
+        "name": "إجمالي الربح/الخسارة"
+      },
+      "total_pnl_percent": {
+        "name": "إجمالي الربح/الخسارة %"
+      },
+      "holding_count": {
+        "name": "عدد المراكز"
+      }
+    }
+  }
+}

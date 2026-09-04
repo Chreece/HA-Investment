@@ -1,0 +1,48 @@
+{
+  "title": "HA Investment",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Configurează HA Investment",
+        "description": "Creează un portofoliu privat pentru fiecare utilizator cu date de piață gratuite. Nu este necesar un API plătit."
+      }
+    },
+    "abort": {
+      "single_instance_allowed": "Este necesară o singură instanță HA Investment. Fiecare utilizator Home Assistant are un portofoliu privat."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "portfolio_value": {
+        "name": "Valoarea portofoliului"
+      },
+      "today_change": {
+        "name": "Schimbare azi"
+      },
+      "today_change_percent": {
+        "name": "Schimbare azi %"
+      },
+      "invested_principal": {
+        "name": "Capital investit"
+      },
+      "current_cost_basis": {
+        "name": "Baza de cost curentă"
+      },
+      "other_costs": {
+        "name": "Alte costuri"
+      },
+      "asset_fees": {
+        "name": "Taxe activ"
+      },
+      "total_pnl": {
+        "name": "P/P total"
+      },
+      "total_pnl_percent": {
+        "name": "P/P total %"
+      },
+      "holding_count": {
+        "name": "Număr poziții"
+      }
+    }
+  }
+}

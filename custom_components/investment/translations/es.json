@@ -1,0 +1,48 @@
+{
+  "title": "HA Investment",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Configurar HA Investment",
+        "description": "Crea una cartera privada por usuario con datos de mercado gratuitos. No se requiere ninguna API de pago."
+      }
+    },
+    "abort": {
+      "single_instance_allowed": "Solo se necesita una instancia de HA Investment. Cada usuario de Home Assistant tiene una cartera privada."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "portfolio_value": {
+        "name": "Valor de cartera"
+      },
+      "today_change": {
+        "name": "Cambio de hoy"
+      },
+      "today_change_percent": {
+        "name": "Cambio de hoy %"
+      },
+      "invested_principal": {
+        "name": "Capital invertido"
+      },
+      "current_cost_basis": {
+        "name": "Base de coste actual"
+      },
+      "other_costs": {
+        "name": "Otros costes"
+      },
+      "asset_fees": {
+        "name": "Comisiones del activo"
+      },
+      "total_pnl": {
+        "name": "P/G total"
+      },
+      "total_pnl_percent": {
+        "name": "P/G total %"
+      },
+      "holding_count": {
+        "name": "Número de posiciones"
+      }
+    }
+  }
+}

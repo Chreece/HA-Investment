@@ -1,0 +1,48 @@
+{
+  "title": "HA Investment",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Sett opp HA Investment",
+        "description": "Opprett en privat portefølje per bruker med gratis markedsdata. Ingen betalt API er nødvendig."
+      }
+    },
+    "abort": {
+      "single_instance_allowed": "Bare én HA Investment-instans er nødvendig. Hver Home Assistant-bruker får en privat portefølje."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "portfolio_value": {
+        "name": "Porteføljeverdi"
+      },
+      "today_change": {
+        "name": "Dagens endring"
+      },
+      "today_change_percent": {
+        "name": "Dagens endring %"
+      },
+      "invested_principal": {
+        "name": "Investert kapital"
+      },
+      "current_cost_basis": {
+        "name": "Gjeldende kostnadsgrunnlag"
+      },
+      "other_costs": {
+        "name": "Andre kostnader"
+      },
+      "asset_fees": {
+        "name": "Aktivagebyrer"
+      },
+      "total_pnl": {
+        "name": "Total G/T"
+      },
+      "total_pnl_percent": {
+        "name": "Total G/T %"
+      },
+      "holding_count": {
+        "name": "Antall posisjoner"
+      }
+    }
+  }
+}

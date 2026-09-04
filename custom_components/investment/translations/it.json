@@ -1,0 +1,48 @@
+{
+  "title": "HA Investment",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Configura HA Investment",
+        "description": "Crea un portafoglio privato per ogni utente con dati di mercato gratuiti. Non serve alcuna API a pagamento."
+      }
+    },
+    "abort": {
+      "single_instance_allowed": "È necessaria una sola istanza di HA Investment. Ogni utente Home Assistant ha un portafoglio privato."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "portfolio_value": {
+        "name": "Valore portafoglio"
+      },
+      "today_change": {
+        "name": "Variazione odierna"
+      },
+      "today_change_percent": {
+        "name": "Variazione odierna %"
+      },
+      "invested_principal": {
+        "name": "Capitale investito"
+      },
+      "current_cost_basis": {
+        "name": "Base di costo attuale"
+      },
+      "other_costs": {
+        "name": "Altri costi"
+      },
+      "asset_fees": {
+        "name": "Commissioni asset"
+      },
+      "total_pnl": {
+        "name": "P/L totale"
+      },
+      "total_pnl_percent": {
+        "name": "P/L totale %"
+      },
+      "holding_count": {
+        "name": "Numero posizioni"
+      }
+    }
+  }
+}

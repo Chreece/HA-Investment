@@ -1,0 +1,48 @@
+{
+  "title": "HA Investment",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Nastavit HA Investment",
+        "description": "Vytvořte soukromé portfolio pro každého uživatele s bezplatnými tržními daty. Placené API není potřeba."
+      }
+    },
+    "abort": {
+      "single_instance_allowed": "Stačí jedna instance HA Investment. Každý uživatel Home Assistant má soukromé portfolio."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "portfolio_value": {
+        "name": "Hodnota portfolia"
+      },
+      "today_change": {
+        "name": "Dnešní změna"
+      },
+      "today_change_percent": {
+        "name": "Dnešní změna %"
+      },
+      "invested_principal": {
+        "name": "Investovaný kapitál"
+      },
+      "current_cost_basis": {
+        "name": "Aktuální nákladová báze"
+      },
+      "other_costs": {
+        "name": "Ostatní náklady"
+      },
+      "asset_fees": {
+        "name": "Poplatky aktiva"
+      },
+      "total_pnl": {
+        "name": "Celkový Z/Z"
+      },
+      "total_pnl_percent": {
+        "name": "Celkový Z/Z %"
+      },
+      "holding_count": {
+        "name": "Počet pozic"
+      }
+    }
+  }
+}

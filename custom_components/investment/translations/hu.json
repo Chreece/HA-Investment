@@ -1,0 +1,48 @@
+{
+  "title": "HA Investment",
+  "config": {
+    "step": {
+      "user": {
+        "title": "HA Investment beállítása",
+        "description": "Hozzon létre felhasználónként privát portfóliót ingyenes piaci adatokkal. Fizetős API nem szükséges."
+      }
+    },
+    "abort": {
+      "single_instance_allowed": "Egy HA Investment példány elegendő. Minden Home Assistant felhasználónak saját privát portfóliója van."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "portfolio_value": {
+        "name": "Portfólióérték"
+      },
+      "today_change": {
+        "name": "Mai változás"
+      },
+      "today_change_percent": {
+        "name": "Mai változás %"
+      },
+      "invested_principal": {
+        "name": "Befektetett tőke"
+      },
+      "current_cost_basis": {
+        "name": "Aktuális költségalap"
+      },
+      "other_costs": {
+        "name": "Egyéb költségek"
+      },
+      "asset_fees": {
+        "name": "Eszközdíjak"
+      },
+      "total_pnl": {
+        "name": "Teljes E/V"
+      },
+      "total_pnl_percent": {
+        "name": "Teljes E/V %"
+      },
+      "holding_count": {
+        "name": "Pozíciók száma"
+      }
+    }
+  }
+}

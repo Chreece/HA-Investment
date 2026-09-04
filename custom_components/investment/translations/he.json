@@ -1,0 +1,48 @@
+{
+  "title": "HA Investment",
+  "config": {
+    "step": {
+      "user": {
+        "title": "הגדרת HA Investment",
+        "description": "צור תיק השקעות פרטי לכל משתמש עם נתוני שוק חינמיים. אין צורך ב-API בתשלום."
+      }
+    },
+    "abort": {
+      "single_instance_allowed": "נדרש מופע אחד בלבד של HA Investment. לכל משתמש Home Assistant יש תיק פרטי."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "portfolio_value": {
+        "name": "שווי התיק"
+      },
+      "today_change": {
+        "name": "שינוי היום"
+      },
+      "today_change_percent": {
+        "name": "שינוי היום %"
+      },
+      "invested_principal": {
+        "name": "הון מושקע"
+      },
+      "current_cost_basis": {
+        "name": "בסיס עלות נוכחי"
+      },
+      "other_costs": {
+        "name": "עלויות אחרות"
+      },
+      "asset_fees": {
+        "name": "עמלות נכס"
+      },
+      "total_pnl": {
+        "name": "רווח/הפסד כולל"
+      },
+      "total_pnl_percent": {
+        "name": "רווח/הפסד כולל %"
+      },
+      "holding_count": {
+        "name": "מספר אחזקות"
+      }
+    }
+  }
+}

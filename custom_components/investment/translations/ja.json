@@ -1,0 +1,48 @@
+{
+  "title": "HA Investment",
+  "config": {
+    "step": {
+      "user": {
+        "title": "HA Investment を設定",
+        "description": "無料の市場データを使ってユーザーごとの非公開ポートフォリオを作成します。有料 API は不要です。"
+      }
+    },
+    "abort": {
+      "single_instance_allowed": "HA Investment は1つだけ必要です。各 Home Assistant ユーザーに非公開ポートフォリオが作成されます。"
+    }
+  },
+  "entity": {
+    "sensor": {
+      "portfolio_value": {
+        "name": "ポートフォリオ価値"
+      },
+      "today_change": {
+        "name": "本日の変化"
+      },
+      "today_change_percent": {
+        "name": "本日の変化 %"
+      },
+      "invested_principal": {
+        "name": "投資元本"
+      },
+      "current_cost_basis": {
+        "name": "現在の取得原価"
+      },
+      "other_costs": {
+        "name": "その他の費用"
+      },
+      "asset_fees": {
+        "name": "資産手数料"
+      },
+      "total_pnl": {
+        "name": "合計損益"
+      },
+      "total_pnl_percent": {
+        "name": "合計損益 %"
+      },
+      "holding_count": {
+        "name": "保有数"
+      }
+    }
+  }
+}

@@ -1,0 +1,48 @@
+{
+  "title": "HA Investment",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Настройка на HA Investment",
+        "description": "Създайте частно портфолио за всеки потребител с безплатни пазарни данни. Не е нужен платен API."
+      }
+    },
+    "abort": {
+      "single_instance_allowed": "Необходима е само една инсталация на HA Investment. Всеки потребител на Home Assistant има частно портфолио."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "portfolio_value": {
+        "name": "Стойност на портфейла"
+      },
+      "today_change": {
+        "name": "Промяна днес"
+      },
+      "today_change_percent": {
+        "name": "Промяна днес %"
+      },
+      "invested_principal": {
+        "name": "Инвестиран капитал"
+      },
+      "current_cost_basis": {
+        "name": "Текуща разходна база"
+      },
+      "other_costs": {
+        "name": "Други разходи"
+      },
+      "asset_fees": {
+        "name": "Такси за активи"
+      },
+      "total_pnl": {
+        "name": "Обща П/З"
+      },
+      "total_pnl_percent": {
+        "name": "Обща П/З %"
+      },
+      "holding_count": {
+        "name": "Брой позиции"
+      }
+    }
+  }
+}

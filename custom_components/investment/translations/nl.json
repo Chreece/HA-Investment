@@ -1,0 +1,48 @@
+{
+  "title": "HA Investment",
+  "config": {
+    "step": {
+      "user": {
+        "title": "HA Investment instellen",
+        "description": "Maak per gebruiker een privéportefeuille met gratis marktgegevens. Er is geen betaalde API nodig."
+      }
+    },
+    "abort": {
+      "single_instance_allowed": "Er is maar één HA Investment-instantie nodig. Elke Home Assistant-gebruiker krijgt een privéportefeuille."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "portfolio_value": {
+        "name": "Portefeuillewaarde"
+      },
+      "today_change": {
+        "name": "Wijziging vandaag"
+      },
+      "today_change_percent": {
+        "name": "Wijziging vandaag %"
+      },
+      "invested_principal": {
+        "name": "Geïnvesteerd kapitaal"
+      },
+      "current_cost_basis": {
+        "name": "Huidige kostbasis"
+      },
+      "other_costs": {
+        "name": "Overige kosten"
+      },
+      "asset_fees": {
+        "name": "Assetkosten"
+      },
+      "total_pnl": {
+        "name": "Totaal W/V"
+      },
+      "total_pnl_percent": {
+        "name": "Totaal W/V %"
+      },
+      "holding_count": {
+        "name": "Aantal posities"
+      }
+    }
+  }
+}
