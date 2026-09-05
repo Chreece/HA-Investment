@@ -44,5 +44,32 @@
         "name": "عدد المراكز"
       }
     }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "واجهات API لبيانات السوق",
+        "description": "موفرو بيانات مدفوعة اختياريون. أدخل مفاتيح API الخاصة بك. تُفضَّل المصادر المدفوعة المضبوطة، وتبقى المصادر المجانية كبديل تلقائي.",
+        "data": {
+          "twelve_data_api_key": "مفتاح API لـ Twelve Data",
+          "alpha_vantage_api_key": "مفتاح API لـ Alpha Vantage",
+          "alpha_vantage_entitlement": "صلاحية بيانات Alpha Vantage"
+        },
+        "data_description": {
+          "twelve_data_api_key": "اتركه فارغًا لتعطيل Twelve Data.",
+          "alpha_vantage_api_key": "اتركه فارغًا لتعطيل Alpha Vantage.",
+          "alpha_vantage_entitlement": "اختر حداثة البيانات المشمولة في خطة Alpha Vantage."
+        }
+      }
+    }
+  },
+  "selector": {
+    "alpha_vantage_entitlement": {
+      "options": {
+        "default": "الافتراضي / حسب الخطة",
+        "realtime": "الوقت الحقيقي",
+        "delayed": "تأخير 15 دقيقة"
+      }
+    }
   }
 }

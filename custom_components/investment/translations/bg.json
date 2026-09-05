@@ -44,5 +44,32 @@
         "name": "Брой позиции"
       }
     }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "API за пазарни данни",
+        "description": "Незадължителни premium доставчици. Въведете собствените си API ключове. Конфигурираните платени източници са с приоритет, а безплатните остават автоматичен резерв.",
+        "data": {
+          "twelve_data_api_key": "API ключ за Twelve Data",
+          "alpha_vantage_api_key": "API ключ за Alpha Vantage",
+          "alpha_vantage_entitlement": "Права за данни Alpha Vantage"
+        },
+        "data_description": {
+          "twelve_data_api_key": "Оставете празно, за да изключите Twelve Data.",
+          "alpha_vantage_api_key": "Оставете празно, за да изключите Alpha Vantage.",
+          "alpha_vantage_entitlement": "Изберете актуалността на данните, включена в плана ви Alpha Vantage."
+        }
+      }
+    }
+  },
+  "selector": {
+    "alpha_vantage_entitlement": {
+      "options": {
+        "default": "По подразбиране / според плана",
+        "realtime": "В реално време",
+        "delayed": "Закъснение 15 минути"
+      }
+    }
   }
 }

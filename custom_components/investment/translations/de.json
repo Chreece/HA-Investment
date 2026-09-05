@@ -4,7 +4,7 @@
     "step": {
       "user": {
         "title": "HA Investment einrichten",
-        "description": "Erstelle pro Home-Assistant-Benutzer ein privates Investmentportfolio mit kostenlosen Marktdaten. Kein kostenpflichtiger API-Schlüssel erforderlich."
+        "description": "Erstelle ein privates Investment-Portfolio pro Benutzer. Kostenlose Marktdaten funktionieren ohne Schlüssel; optionale Premium-API-Schlüssel können später ergänzt werden."
       }
     },
     "abort": {
@@ -42,6 +42,33 @@
       },
       "holding_count": {
         "name": "Anzahl Positionen"
+      }
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Marktdaten-APIs",
+        "description": "Optionale Premium-Marktdatenanbieter. Trage deine eigenen API-Schlüssel ein. Konfigurierte Bezahlquellen werden bevorzugt; die bisherigen kostenlosen Anbieter bleiben automatische Fallbacks.",
+        "data": {
+          "twelve_data_api_key": "Twelve Data API-Schlüssel",
+          "alpha_vantage_api_key": "Alpha Vantage API-Schlüssel",
+          "alpha_vantage_entitlement": "Alpha-Vantage-Datenberechtigung"
+        },
+        "data_description": {
+          "twelve_data_api_key": "Leer lassen, um Twelve Data zu deaktivieren.",
+          "alpha_vantage_api_key": "Leer lassen, um Alpha Vantage zu deaktivieren.",
+          "alpha_vantage_entitlement": "Wähle die Datenaktualität, die dein Alpha-Vantage-Tarif enthält."
+        }
+      }
+    }
+  },
+  "selector": {
+    "alpha_vantage_entitlement": {
+      "options": {
+        "default": "Standard / Tarifstandard",
+        "realtime": "Echtzeit",
+        "delayed": "15 Minuten verzögert"
       }
     }
   }

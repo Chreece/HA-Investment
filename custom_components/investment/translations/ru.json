@@ -44,5 +44,32 @@
         "name": "Количество позиций"
       }
     }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "API рыночных данных",
+        "description": "Необязательные премиум-провайдеры. Укажите свои API-ключи. Настроенные платные источники имеют приоритет, бесплатные остаются автоматическим резервом.",
+        "data": {
+          "twelve_data_api_key": "API-ключ Twelve Data",
+          "alpha_vantage_api_key": "API-ключ Alpha Vantage",
+          "alpha_vantage_entitlement": "Режим данных Alpha Vantage"
+        },
+        "data_description": {
+          "twelve_data_api_key": "Оставьте пустым, чтобы отключить Twelve Data.",
+          "alpha_vantage_api_key": "Оставьте пустым, чтобы отключить Alpha Vantage.",
+          "alpha_vantage_entitlement": "Выберите свежесть данных, доступную в вашем тарифе Alpha Vantage."
+        }
+      }
+    }
+  },
+  "selector": {
+    "alpha_vantage_entitlement": {
+      "options": {
+        "default": "По умолчанию / по тарифу",
+        "realtime": "В реальном времени",
+        "delayed": "С задержкой 15 минут"
+      }
+    }
   }
 }

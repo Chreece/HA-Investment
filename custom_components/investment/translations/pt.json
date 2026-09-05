@@ -44,5 +44,32 @@
         "name": "Número de posições"
       }
     }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "APIs de dados de mercado",
+        "description": "Fornecedores premium opcionais. Introduza as suas próprias chaves API. As fontes pagas configuradas têm prioridade; os fornecedores gratuitos continuam como alternativa automática.",
+        "data": {
+          "twelve_data_api_key": "Chave API Twelve Data",
+          "alpha_vantage_api_key": "Chave API Alpha Vantage",
+          "alpha_vantage_entitlement": "Direito de dados Alpha Vantage"
+        },
+        "data_description": {
+          "twelve_data_api_key": "Deixe vazio para desativar Twelve Data.",
+          "alpha_vantage_api_key": "Deixe vazio para desativar Alpha Vantage.",
+          "alpha_vantage_entitlement": "Escolha a atualização de dados incluída no seu plano Alpha Vantage."
+        }
+      }
+    }
+  },
+  "selector": {
+    "alpha_vantage_entitlement": {
+      "options": {
+        "default": "Predefinido / plano",
+        "realtime": "Tempo real",
+        "delayed": "Atraso de 15 minutos"
+      }
+    }
   }
 }

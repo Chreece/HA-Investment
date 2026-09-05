@@ -44,5 +44,32 @@
         "name": "होल्डिंग संख्या"
       }
     }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "बाज़ार डेटा API",
+        "description": "वैकल्पिक प्रीमियम बाज़ार-डेटा प्रदाता। अपनी API कुंजियाँ दर्ज करें। कॉन्फ़िगर किए गए भुगतान स्रोत प्राथमिक होंगे और मुफ़्त प्रदाता स्वचालित बैकअप बने रहेंगे।",
+        "data": {
+          "twelve_data_api_key": "Twelve Data API कुंजी",
+          "alpha_vantage_api_key": "Alpha Vantage API कुंजी",
+          "alpha_vantage_entitlement": "Alpha Vantage डेटा अधिकार"
+        },
+        "data_description": {
+          "twelve_data_api_key": "Twelve Data बंद करने के लिए खाली छोड़ें।",
+          "alpha_vantage_api_key": "Alpha Vantage बंद करने के लिए खाली छोड़ें।",
+          "alpha_vantage_entitlement": "अपने Alpha Vantage प्लान में उपलब्ध डेटा ताज़गी चुनें।"
+        }
+      }
+    }
+  },
+  "selector": {
+    "alpha_vantage_entitlement": {
+      "options": {
+        "default": "डिफ़ॉल्ट / प्लान के अनुसार",
+        "realtime": "रीयल-टाइम",
+        "delayed": "15 मिनट विलंबित"
+      }
+    }
   }
 }

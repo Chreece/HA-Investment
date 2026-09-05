@@ -44,5 +44,32 @@
         "name": "Кількість позицій"
       }
     }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "API ринкових даних",
+        "description": "Необов’язкові преміум-провайдери. Введіть власні API-ключі. Налаштовані платні джерела мають пріоритет, безкоштовні залишаються автоматичним резервом.",
+        "data": {
+          "twelve_data_api_key": "API-ключ Twelve Data",
+          "alpha_vantage_api_key": "API-ключ Alpha Vantage",
+          "alpha_vantage_entitlement": "Режим даних Alpha Vantage"
+        },
+        "data_description": {
+          "twelve_data_api_key": "Залиште порожнім, щоб вимкнути Twelve Data.",
+          "alpha_vantage_api_key": "Залиште порожнім, щоб вимкнути Alpha Vantage.",
+          "alpha_vantage_entitlement": "Оберіть актуальність даних, доступну у вашому плані Alpha Vantage."
+        }
+      }
+    }
+  },
+  "selector": {
+    "alpha_vantage_entitlement": {
+      "options": {
+        "default": "Типово / за планом",
+        "realtime": "У реальному часі",
+        "delayed": "Затримка 15 хвилин"
+      }
+    }
   }
 }

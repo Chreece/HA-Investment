@@ -44,5 +44,32 @@
         "name": "Antal positioner"
       }
     }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "API’er til markedsdata",
+        "description": "Valgfrie premiumudbydere. Indtast dine egne API-nøgler. Konfigurerede betalte kilder prioriteres, og gratis udbydere forbliver automatisk fallback.",
+        "data": {
+          "twelve_data_api_key": "Twelve Data API-nøgle",
+          "alpha_vantage_api_key": "Alpha Vantage API-nøgle",
+          "alpha_vantage_entitlement": "Alpha Vantage datarettighed"
+        },
+        "data_description": {
+          "twelve_data_api_key": "Lad stå tomt for at deaktivere Twelve Data.",
+          "alpha_vantage_api_key": "Lad stå tomt for at deaktivere Alpha Vantage.",
+          "alpha_vantage_entitlement": "Vælg den dataaktualitet, der er inkluderet i din Alpha Vantage-plan."
+        }
+      }
+    }
+  },
+  "selector": {
+    "alpha_vantage_entitlement": {
+      "options": {
+        "default": "Standard / ifølge plan",
+        "realtime": "Realtid",
+        "delayed": "15 minutters forsinkelse"
+      }
+    }
   }
 }

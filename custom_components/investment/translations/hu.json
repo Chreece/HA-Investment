@@ -44,5 +44,32 @@
         "name": "Pozíciók száma"
       }
     }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Piaci adat API-k",
+        "description": "Opcionális prémium szolgáltatók. Add meg a saját API-kulcsaidat. A beállított fizetős források elsőbbséget kapnak, az ingyenes szolgáltatók automatikus tartalékként megmaradnak.",
+        "data": {
+          "twelve_data_api_key": "Twelve Data API-kulcs",
+          "alpha_vantage_api_key": "Alpha Vantage API-kulcs",
+          "alpha_vantage_entitlement": "Alpha Vantage adatjogosultság"
+        },
+        "data_description": {
+          "twelve_data_api_key": "Hagyd üresen a Twelve Data kikapcsolásához.",
+          "alpha_vantage_api_key": "Hagyd üresen az Alpha Vantage kikapcsolásához.",
+          "alpha_vantage_entitlement": "Válaszd ki az Alpha Vantage csomagodban elérhető adatfrissességet."
+        }
+      }
+    }
+  },
+  "selector": {
+    "alpha_vantage_entitlement": {
+      "options": {
+        "default": "Alapértelmezett / csomag szerint",
+        "realtime": "Valós idejű",
+        "delayed": "15 perces késleltetés"
+      }
+    }
   }
 }

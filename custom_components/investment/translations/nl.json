@@ -44,5 +44,32 @@
         "name": "Aantal posities"
       }
     }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Marktdata-API’s",
+        "description": "Optionele premium marktdata-aanbieders. Voer je eigen API-sleutels in. Geconfigureerde betaalde feeds krijgen voorrang; gratis providers blijven automatische fallback.",
+        "data": {
+          "twelve_data_api_key": "Twelve Data API-sleutel",
+          "alpha_vantage_api_key": "Alpha Vantage API-sleutel",
+          "alpha_vantage_entitlement": "Alpha Vantage datarecht"
+        },
+        "data_description": {
+          "twelve_data_api_key": "Leeg laten om Twelve Data uit te schakelen.",
+          "alpha_vantage_api_key": "Leeg laten om Alpha Vantage uit te schakelen.",
+          "alpha_vantage_entitlement": "Kies de dataversheid die in je Alpha Vantage-abonnement zit."
+        }
+      }
+    }
+  },
+  "selector": {
+    "alpha_vantage_entitlement": {
+      "options": {
+        "default": "Standaard / volgens abonnement",
+        "realtime": "Realtime",
+        "delayed": "15 minuten vertraagd"
+      }
+    }
   }
 }

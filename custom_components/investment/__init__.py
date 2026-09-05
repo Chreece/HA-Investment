@@ -27,7 +27,7 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up HA Investment."""
-    manager = InvestmentManager(hass)
+    manager = InvestmentManager(hass, entry)
     await manager.async_initialize()
     hass.data[DOMAIN] = {"entry_id": entry.entry_id, "manager": manager}
     await hass.config_entries.async_forward_entry_setups(entry, ["sensor"])

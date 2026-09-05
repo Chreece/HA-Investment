@@ -44,5 +44,32 @@
         "name": "Omistusten määrä"
       }
     }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Markkinatieto-API:t",
+        "description": "Valinnaiset premium-palveluntarjoajat. Syötä omat API-avaimesi. Määritetyt maksulliset lähteet ovat ensisijaisia ja ilmaiset palvelut jäävät automaattisiksi varalähteiksi.",
+        "data": {
+          "twelve_data_api_key": "Twelve Data API-avain",
+          "alpha_vantage_api_key": "Alpha Vantage API-avain",
+          "alpha_vantage_entitlement": "Alpha Vantage -dataoikeus"
+        },
+        "data_description": {
+          "twelve_data_api_key": "Jätä tyhjäksi poistaaksesi Twelve Datan käytöstä.",
+          "alpha_vantage_api_key": "Jätä tyhjäksi poistaaksesi Alpha Vantagen käytöstä.",
+          "alpha_vantage_entitlement": "Valitse Alpha Vantage -pakettiisi kuuluva datan ajantasaisuus."
+        }
+      }
+    }
+  },
+  "selector": {
+    "alpha_vantage_entitlement": {
+      "options": {
+        "default": "Oletus / paketin mukaan",
+        "realtime": "Reaaliaikainen",
+        "delayed": "15 min viive"
+      }
+    }
   }
 }

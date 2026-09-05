@@ -44,5 +44,32 @@
         "name": "Liczba pozycji"
       }
     }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "API danych rynkowych",
+        "description": "Opcjonalni dostawcy premium. Wprowadź własne klucze API. Skonfigurowane płatne źródła mają pierwszeństwo, a darmowi dostawcy pozostają automatycznym zapasem.",
+        "data": {
+          "twelve_data_api_key": "Klucz API Twelve Data",
+          "alpha_vantage_api_key": "Klucz API Alpha Vantage",
+          "alpha_vantage_entitlement": "Uprawnienie danych Alpha Vantage"
+        },
+        "data_description": {
+          "twelve_data_api_key": "Pozostaw puste, aby wyłączyć Twelve Data.",
+          "alpha_vantage_api_key": "Pozostaw puste, aby wyłączyć Alpha Vantage.",
+          "alpha_vantage_entitlement": "Wybierz świeżość danych dostępną w planie Alpha Vantage."
+        }
+      }
+    }
+  },
+  "selector": {
+    "alpha_vantage_entitlement": {
+      "options": {
+        "default": "Domyślne / zgodnie z planem",
+        "realtime": "Czas rzeczywisty",
+        "delayed": "Opóźnienie 15 minut"
+      }
+    }
   }
 }

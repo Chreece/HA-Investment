@@ -4,7 +4,7 @@
     "step": {
       "user": {
         "title": "Ρύθμιση HA Investment",
-        "description": "Δημιούργησε ιδιωτικό επενδυτικό χαρτοφυλάκιο ανά χρήστη με δωρεάν δεδομένα αγοράς. Δεν απαιτείται πληρωμένο API."
+        "description": "Δημιούργησε ιδιωτικό επενδυτικό χαρτοφυλάκιο ανά χρήστη. Οι δωρεάν πηγές λειτουργούν χωρίς key και προαιρετικά premium API keys μπορούν να προστεθούν αργότερα."
       }
     },
     "abort": {
@@ -42,6 +42,33 @@
       },
       "holding_count": {
         "name": "Πλήθος θέσεων"
+      }
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "API δεδομένων αγοράς",
+        "description": "Προαιρετικοί premium πάροχοι δεδομένων αγοράς. Βάλε τα δικά σου API keys. Οι πληρωμένες πηγές που έχουν ρυθμιστεί προτιμώνται, ενώ οι υπάρχοντες δωρεάν πάροχοι παραμένουν αυτόματα fallback.",
+        "data": {
+          "twelve_data_api_key": "API key Twelve Data",
+          "alpha_vantage_api_key": "API key Alpha Vantage",
+          "alpha_vantage_entitlement": "Δικαιώματα δεδομένων Alpha Vantage"
+        },
+        "data_description": {
+          "twelve_data_api_key": "Άφησέ το κενό για απενεργοποίηση του Twelve Data.",
+          "alpha_vantage_api_key": "Άφησέ το κενό για απενεργοποίηση του Alpha Vantage.",
+          "alpha_vantage_entitlement": "Επίλεξε τη διαθεσιμότητα/καθυστέρηση δεδομένων που περιλαμβάνει το πακέτο Alpha Vantage."
+        }
+      }
+    }
+  },
+  "selector": {
+    "alpha_vantage_entitlement": {
+      "options": {
+        "default": "Προεπιλογή / σύμφωνα με το πακέτο",
+        "realtime": "Σε πραγματικό χρόνο",
+        "delayed": "Καθυστέρηση 15 λεπτών"
       }
     }
   }

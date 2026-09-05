@@ -44,5 +44,32 @@
         "name": "Jumlah posisi"
       }
     }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "API data pasar",
+        "description": "Penyedia data premium opsional. Masukkan kunci API Anda sendiri. Sumber berbayar yang dikonfigurasi diprioritaskan dan penyedia gratis tetap menjadi fallback otomatis.",
+        "data": {
+          "twelve_data_api_key": "Kunci API Twelve Data",
+          "alpha_vantage_api_key": "Kunci API Alpha Vantage",
+          "alpha_vantage_entitlement": "Hak data Alpha Vantage"
+        },
+        "data_description": {
+          "twelve_data_api_key": "Kosongkan untuk menonaktifkan Twelve Data.",
+          "alpha_vantage_api_key": "Kosongkan untuk menonaktifkan Alpha Vantage.",
+          "alpha_vantage_entitlement": "Pilih tingkat kebaruan data yang termasuk dalam paket Alpha Vantage Anda."
+        }
+      }
+    }
+  },
+  "selector": {
+    "alpha_vantage_entitlement": {
+      "options": {
+        "default": "Default / sesuai paket",
+        "realtime": "Real-time",
+        "delayed": "Tertunda 15 menit"
+      }
+    }
   }
 }

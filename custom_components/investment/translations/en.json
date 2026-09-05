@@ -4,7 +4,7 @@
     "step": {
       "user": {
         "title": "Set up HA Investment",
-        "description": "Create a private per-user investment portfolio using free market-data sources. No paid API key is required."
+        "description": "Create a private per-user investment portfolio dashboard. Free market-data sources work without a key; optional premium API keys can be added later."
       }
     },
     "abort": {
@@ -42,6 +42,33 @@
       },
       "holding_count": {
         "name": "Holding count"
+      }
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Market data APIs",
+        "description": "Optional premium market-data providers. Enter your own API keys. Configured paid feeds are preferred; existing free providers remain automatic fallbacks.",
+        "data": {
+          "twelve_data_api_key": "Twelve Data API key",
+          "alpha_vantage_api_key": "Alpha Vantage API key",
+          "alpha_vantage_entitlement": "Alpha Vantage data entitlement"
+        },
+        "data_description": {
+          "twelve_data_api_key": "Leave empty to disable Twelve Data.",
+          "alpha_vantage_api_key": "Leave empty to disable Alpha Vantage.",
+          "alpha_vantage_entitlement": "Choose the freshness entitlement included in your Alpha Vantage plan."
+        }
+      }
+    }
+  },
+  "selector": {
+    "alpha_vantage_entitlement": {
+      "options": {
+        "default": "Default / plan default",
+        "realtime": "Real-time",
+        "delayed": "15-minute delayed"
       }
     }
   }

@@ -44,5 +44,32 @@
         "name": "Pozisyon sayısı"
       }
     }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Piyasa verisi API’leri",
+        "description": "İsteğe bağlı premium veri sağlayıcıları. Kendi API anahtarlarınızı girin. Yapılandırılan ücretli akışlar önceliklidir; ücretsiz sağlayıcılar otomatik yedek olarak kalır.",
+        "data": {
+          "twelve_data_api_key": "Twelve Data API anahtarı",
+          "alpha_vantage_api_key": "Alpha Vantage API anahtarı",
+          "alpha_vantage_entitlement": "Alpha Vantage veri yetkisi"
+        },
+        "data_description": {
+          "twelve_data_api_key": "Twelve Data’yı kapatmak için boş bırakın.",
+          "alpha_vantage_api_key": "Alpha Vantage’ı kapatmak için boş bırakın.",
+          "alpha_vantage_entitlement": "Alpha Vantage planınızdaki veri güncelliğini seçin."
+        }
+      }
+    }
+  },
+  "selector": {
+    "alpha_vantage_entitlement": {
+      "options": {
+        "default": "Varsayılan / plan varsayılanı",
+        "realtime": "Gerçek zamanlı",
+        "delayed": "15 dakika gecikmeli"
+      }
+    }
   }
 }

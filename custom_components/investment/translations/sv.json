@@ -44,5 +44,32 @@
         "name": "Antal innehav"
       }
     }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "API:er för marknadsdata",
+        "description": "Valfria premiumleverantörer. Ange dina egna API-nycklar. Konfigurerade betalkällor prioriteras och gratisleverantörer finns kvar som automatisk reserv.",
+        "data": {
+          "twelve_data_api_key": "Twelve Data API-nyckel",
+          "alpha_vantage_api_key": "Alpha Vantage API-nyckel",
+          "alpha_vantage_entitlement": "Alpha Vantage databehörighet"
+        },
+        "data_description": {
+          "twelve_data_api_key": "Lämna tomt för att inaktivera Twelve Data.",
+          "alpha_vantage_api_key": "Lämna tomt för att inaktivera Alpha Vantage.",
+          "alpha_vantage_entitlement": "Välj den dataaktualitet som ingår i din Alpha Vantage-plan."
+        }
+      }
+    }
+  },
+  "selector": {
+    "alpha_vantage_entitlement": {
+      "options": {
+        "default": "Standard / enligt plan",
+        "realtime": "Realtid",
+        "delayed": "15 minuters fördröjning"
+      }
+    }
   }
 }

@@ -11,6 +11,7 @@ from collections import defaultdict
 from copy import deepcopy
 from typing import Any
 
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.util import dt as dt_util
@@ -24,6 +25,10 @@ from .currency import (
     normalize_currency,
 )
 from .const import (
+    CONF_ALPHA_VANTAGE_API_KEY,
+    CONF_ALPHA_VANTAGE_ENTITLEMENT,
+    CONF_TWELVE_DATA_API_KEY,
+    DEFAULT_ALPHA_VANTAGE_ENTITLEMENT,
     DEFAULT_HISTORY_CACHE_SECONDS,
     DEFAULT_INDICATION_PREFERENCES,
     DEFAULT_INCOGNITO_REVEAL_SECONDS,
@@ -59,7 +64,15 @@ from .ledger import (
     validate_transaction_date,
 )
 from .models import HistoryPoint, Quote
-from .providers import FrankfurterProvider, KrakenProvider, ProviderError, StooqProvider, YahooProvider
+from .providers import (
+    AlphaVantageProvider,
+    FrankfurterProvider,
+    KrakenProvider,
+    ProviderError,
+    StooqProvider,
+    TwelveDataProvider,
+    YahooProvider,
+)
 from .providers.base import quote_currency_matches
 from .storage import InvestmentStore
 
@@ -92,17 +105,52 @@ class TTLCache:
 class InvestmentManager:
     """Per-instance manager. User privacy is enforced at every public method."""
 
-    def __init__(self, hass: HomeAssistant) -> None:
+    def __init__(self, hass: HomeAssistant, entry: ConfigEntry | None = None) -> None:
         self.hass = hass
+        self.entry = entry
         self.store = InvestmentStore(hass)
         self.yahoo = YahooProvider(hass)
         self.kraken = KrakenProvider(hass)
         self.frankfurter = FrankfurterProvider(hass)
         self.stooq = StooqProvider(hass)
+
+        options = dict(entry.options) if entry is not None else {}
+        self.paid_providers: list[Any] = []
+        twelve_key = str(options.get(CONF_TWELVE_DATA_API_KEY) or "").strip()
+        if twelve_key:
+            self.paid_providers.append(TwelveDataProvider(hass, twelve_key))
+        alpha_key = str(options.get(CONF_ALPHA_VANTAGE_API_KEY) or "").strip()
+        if alpha_key:
+            self.paid_providers.append(
+                AlphaVantageProvider(
+                    hass,
+                    alpha_key,
+                    str(
+                        options.get(
+                            CONF_ALPHA_VANTAGE_ENTITLEMENT,
+                            DEFAULT_ALPHA_VANTAGE_ENTITLEMENT,
+                        )
+                    ),
+                )
+            )
+
         self.providers = {
             self.yahoo.provider_id: self.yahoo,
             self.kraken.provider_id: self.kraken,
             self.frankfurter.provider_id: self.frankfurter,
+            **{provider.provider_id: provider for provider in self.paid_providers},
+        }
+        # Commercial/API-key sources are intentionally first. The existing no-key
+        # providers remain available so a subscription outage never makes Search
+        # unusable and users are never forced to buy market data.
+        self.search_providers = [
+            *self.paid_providers,
+            self.kraken,
+            self.frankfurter,
+            self.yahoo,
+        ]
+        self._search_rank = {
+            provider.provider_id: index for index, provider in enumerate(self.search_providers)
         }
         self._cache = TTLCache()
         self._network_sem = asyncio.Semaphore(6)
@@ -137,16 +185,15 @@ class InvestmentManager:
                 _LOGGER.debug("Search provider %s failed: %s", provider.provider_id, err)
                 return []
 
-        chunks = await asyncio.gather(
-            run(self.yahoo), run(self.kraken), run(self.frankfurter)
-        )
+        chunks = await asyncio.gather(*(run(provider) for provider in self.search_providers))
         raw_results: list[dict[str, Any]] = []
         for chunk in chunks:
             raw_results.extend(item.as_dict() for item in chunk)
-        # Prefer dedicated no-key crypto/FX feeds, then Yahoo for broad discovery.
+        # API-key providers are preferred when configured; free providers remain
+        # deterministic fallbacks and still participate in discovery.
         raw_results.sort(
             key=lambda x: (
-                {"kraken": 0, "frankfurter": 0, "yahoo": 1}.get(x["provider"], 9),
+                self._search_rank.get(str(x.get("provider") or ""), 99),
                 x["symbol"],
             )
         )
@@ -953,7 +1000,7 @@ class InvestmentManager:
         if provider_name not in self.providers or not provider_id:
             raise ValueError("Unsupported or incomplete asset")
         requested_currency = str(asset.get("currency") or "").strip()
-        quote = await self._quote({"provider": provider_name, "provider_id": provider_id})
+        quote = await self._quote(asset)
         if requested_currency and not quote_currency_matches(quote.currency, requested_currency):
             raise ValueError(f"Quote currency {quote.currency} does not match selected asset currency {requested_currency}")
         return quote.as_dict()
@@ -964,21 +1011,61 @@ class InvestmentManager:
             cached = self._cache.get(key, DEFAULT_QUOTE_CACHE_SECONDS)
             if cached is not None:
                 return Quote(**cached)
-        provider = self.providers[holding["provider"]]
+        provider_name = str(holding.get("provider") or "")
+        provider = self.providers.get(provider_name)
+        if provider is None:
+            if provider_name not in {"twelve_data", "alpha_vantage"}:
+                raise ProviderError(f"Unsupported provider {provider_name}")
+            return await self._fallback_paid_quote(holding, ProviderError(f"{provider_name} is not configured"))
         try:
             async with self._network_sem:
                 quote = await provider.async_quote(holding["provider_id"])
         except Exception as err:
-            if holding["provider"] == "yahoo":
+            if provider_name == "yahoo":
                 try:
                     async with self._network_sem:
                         quote = await self.stooq.async_quote(holding["provider_id"])
                 except Exception:
                     raise ProviderError(str(err)) from err
+            elif provider_name in {"twelve_data", "alpha_vantage"}:
+                quote = await self._fallback_paid_quote(holding, err)
             else:
                 raise
         self._cache.set(key, quote.as_dict())
         return quote
+
+    async def _fallback_paid_quote(self, holding: dict[str, Any], first_err: Exception) -> Quote:
+        """Keep API-key holdings readable if a paid feed/key becomes unavailable."""
+        symbol = str(holding.get("symbol") or "").strip()
+        if not symbol:
+            raise ProviderError(str(first_err)) from first_err
+        yahoo_symbol = symbol.replace("/", "-") if str(holding.get("category") or "") == "crypto" else symbol
+        expected_currency = str(holding.get("currency") or "").strip()
+        try:
+            async with self._network_sem:
+                quote = await self.yahoo.async_quote(yahoo_symbol)
+            if expected_currency and not quote_currency_matches(
+                quote.currency, expected_currency
+            ):
+                raise ProviderError(
+                    f"Fallback quote currency {quote.currency} does not match "
+                    f"holding currency {expected_currency}"
+                )
+            return quote
+        except Exception:
+            try:
+                async with self._network_sem:
+                    quote = await self.stooq.async_quote(symbol)
+                if expected_currency and not quote_currency_matches(
+                    quote.currency, expected_currency
+                ):
+                    raise ProviderError(
+                        f"Fallback quote currency {quote.currency} does not match "
+                        f"holding currency {expected_currency}"
+                    )
+                return quote
+            except Exception:
+                raise ProviderError(str(first_err)) from first_err
 
     async def _fx_rate(self, from_currency: str, to_currency: str, *, force: bool = False) -> float:
         from_currency, from_scale = self._normalize_currency(from_currency)
@@ -2384,27 +2471,53 @@ class InvestmentManager:
         cached = self._cache.get(key, DEFAULT_HISTORY_CACHE_SECONDS)
         if cached is not None:
             return [HistoryPoint(**x) for x in cached]
-        provider = self.providers[holding["provider"]]
-        try:
-            async with self._network_sem:
-                points = list(await provider.async_history(holding["provider_id"], period))
-        except Exception as first_err:
-            if holding["provider"] == "yahoo":
+        provider_name = str(holding.get("provider") or "")
+        provider = self.providers.get(provider_name)
+        if provider is None:
+            if provider_name not in {"twelve_data", "alpha_vantage"}:
+                raise ProviderError(f"Unsupported provider {provider_name}")
+            points = await self._fallback_paid_history(holding, period, ProviderError(f"{provider_name} is not configured"))
+        else:
+            try:
                 async with self._network_sem:
-                    points = list(await self.stooq.async_history(holding["provider_id"], period))
-            elif holding["provider"] == "kraken":
-                # Kraken's OHLC endpoint is intentionally bounded. Use Yahoo's no-key
-                # chart history for long crypto ranges when a conventional pair exists.
-                symbol = holding.get("symbol", "")
-                if "/" not in symbol:
+                    points = list(await provider.async_history(holding["provider_id"], period))
+            except Exception as first_err:
+                if provider_name == "yahoo":
+                    async with self._network_sem:
+                        points = list(await self.stooq.async_history(holding["provider_id"], period))
+                elif provider_name == "kraken":
+                    # Kraken's OHLC endpoint is intentionally bounded. Use Yahoo's no-key
+                    # chart history for long crypto ranges when a conventional pair exists.
+                    symbol = holding.get("symbol", "")
+                    if "/" not in symbol:
+                        raise first_err
+                    base, quote = symbol.split("/", 1)
+                    async with self._network_sem:
+                        points = list(await self.yahoo.async_history(f"{base}-{quote}", period))
+                elif provider_name in {"twelve_data", "alpha_vantage"}:
+                    points = await self._fallback_paid_history(holding, period, first_err)
+                else:
                     raise first_err
-                base, quote = symbol.split("/", 1)
-                async with self._network_sem:
-                    points = list(await self.yahoo.async_history(f"{base}-{quote}", period))
-            else:
-                raise first_err
         self._cache.set(key, [x.as_dict() for x in points])
         return points
+
+    async def _fallback_paid_history(
+        self, holding: dict[str, Any], period: str, first_err: Exception
+    ) -> list[HistoryPoint]:
+        """Use existing no-key history as a continuity fallback for paid holdings."""
+        symbol = str(holding.get("symbol") or "").strip()
+        if not symbol:
+            raise ProviderError(str(first_err)) from first_err
+        yahoo_symbol = symbol.replace("/", "-") if str(holding.get("category") or "") == "crypto" else symbol
+        try:
+            async with self._network_sem:
+                return list(await self.yahoo.async_history(yahoo_symbol, period))
+        except Exception:
+            try:
+                async with self._network_sem:
+                    return list(await self.stooq.async_history(symbol, period))
+            except Exception:
+                raise ProviderError(str(first_err)) from first_err
 
     async def _convert_history(
         self, points: list[HistoryPoint], currency: str, base: str, period: str

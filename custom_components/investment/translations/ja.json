@@ -44,5 +44,32 @@
         "name": "保有数"
       }
     }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "市場データ API",
+        "description": "任意のプレミアム市場データプロバイダーです。自分の API キーを入力します。設定済みの有料フィードを優先し、無料プロバイダーは自動フォールバックとして残ります。",
+        "data": {
+          "twelve_data_api_key": "Twelve Data API キー",
+          "alpha_vantage_api_key": "Alpha Vantage API キー",
+          "alpha_vantage_entitlement": "Alpha Vantage データ権限"
+        },
+        "data_description": {
+          "twelve_data_api_key": "Twelve Data を無効にする場合は空欄にします。",
+          "alpha_vantage_api_key": "Alpha Vantage を無効にする場合は空欄にします。",
+          "alpha_vantage_entitlement": "Alpha Vantage プランに含まれるデータの鮮度を選択します。"
+        }
+      }
+    }
+  },
+  "selector": {
+    "alpha_vantage_entitlement": {
+      "options": {
+        "default": "既定 / プラン既定",
+        "realtime": "リアルタイム",
+        "delayed": "15分遅延"
+      }
+    }
   }
 }

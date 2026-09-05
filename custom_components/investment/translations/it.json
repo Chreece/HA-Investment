@@ -44,5 +44,32 @@
         "name": "Numero posizioni"
       }
     }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "API dati di mercato",
+        "description": "Provider premium opzionali. Inserisci le tue chiavi API. I feed a pagamento configurati hanno priorità; i provider gratuiti restano come fallback automatico.",
+        "data": {
+          "twelve_data_api_key": "Chiave API Twelve Data",
+          "alpha_vantage_api_key": "Chiave API Alpha Vantage",
+          "alpha_vantage_entitlement": "Autorizzazione dati Alpha Vantage"
+        },
+        "data_description": {
+          "twelve_data_api_key": "Lascia vuoto per disattivare Twelve Data.",
+          "alpha_vantage_api_key": "Lascia vuoto per disattivare Alpha Vantage.",
+          "alpha_vantage_entitlement": "Scegli la freschezza dei dati inclusa nel tuo piano Alpha Vantage."
+        }
+      }
+    }
+  },
+  "selector": {
+    "alpha_vantage_entitlement": {
+      "options": {
+        "default": "Predefinito / piano",
+        "realtime": "Tempo reale",
+        "delayed": "Ritardo di 15 minuti"
+      }
+    }
   }
 }

@@ -44,5 +44,32 @@
         "name": "Nombre de positions"
       }
     }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "API de données de marché",
+        "description": "Fournisseurs premium facultatifs. Saisissez vos propres clés API. Les flux payants configurés sont prioritaires et les fournisseurs gratuits restent disponibles en secours.",
+        "data": {
+          "twelve_data_api_key": "Clé API Twelve Data",
+          "alpha_vantage_api_key": "Clé API Alpha Vantage",
+          "alpha_vantage_entitlement": "Droit de données Alpha Vantage"
+        },
+        "data_description": {
+          "twelve_data_api_key": "Laissez vide pour désactiver Twelve Data.",
+          "alpha_vantage_api_key": "Laissez vide pour désactiver Alpha Vantage.",
+          "alpha_vantage_entitlement": "Choisissez la fraîcheur des données incluse dans votre abonnement Alpha Vantage."
+        }
+      }
+    }
+  },
+  "selector": {
+    "alpha_vantage_entitlement": {
+      "options": {
+        "default": "Par défaut / selon le forfait",
+        "realtime": "Temps réel",
+        "delayed": "Différé de 15 minutes"
+      }
+    }
   }
 }

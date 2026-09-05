@@ -44,5 +44,32 @@
         "name": "Počet pozícií"
       }
     }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "API trhových dát",
+        "description": "Voliteľní prémioví poskytovatelia. Zadajte vlastné API kľúče. Nastavené platené zdroje majú prednosť a bezplatní poskytovatelia zostávajú automatickou zálohou.",
+        "data": {
+          "twelve_data_api_key": "API kľúč Twelve Data",
+          "alpha_vantage_api_key": "API kľúč Alpha Vantage",
+          "alpha_vantage_entitlement": "Oprávnenie dát Alpha Vantage"
+        },
+        "data_description": {
+          "twelve_data_api_key": "Nechajte prázdne pre vypnutie Twelve Data.",
+          "alpha_vantage_api_key": "Nechajte prázdne pre vypnutie Alpha Vantage.",
+          "alpha_vantage_entitlement": "Vyberte aktuálnosť dát zahrnutú vo vašom pláne Alpha Vantage."
+        }
+      }
+    }
+  },
+  "selector": {
+    "alpha_vantage_entitlement": {
+      "options": {
+        "default": "Predvolené / podľa plánu",
+        "realtime": "V reálnom čase",
+        "delayed": "Oneskorenie 15 minút"
+      }
+    }
   }
 }

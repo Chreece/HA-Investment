@@ -44,5 +44,32 @@
         "name": "מספר אחזקות"
       }
     }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "ממשקי API לנתוני שוק",
+        "description": "ספקי נתוני פרימיום אופציונליים. הזן את מפתחות ה-API שלך. מקורות בתשלום שהוגדרו מקבלים עדיפות, והספקים החינמיים נשארים כגיבוי אוטומטי.",
+        "data": {
+          "twelve_data_api_key": "מפתח API של Twelve Data",
+          "alpha_vantage_api_key": "מפתח API של Alpha Vantage",
+          "alpha_vantage_entitlement": "הרשאת נתונים של Alpha Vantage"
+        },
+        "data_description": {
+          "twelve_data_api_key": "השאר ריק כדי להשבית את Twelve Data.",
+          "alpha_vantage_api_key": "השאר ריק כדי להשבית את Alpha Vantage.",
+          "alpha_vantage_entitlement": "בחר את רמת עדכניות הנתונים הכלולה בתוכנית Alpha Vantage שלך."
+        }
+      }
+    }
+  },
+  "selector": {
+    "alpha_vantage_entitlement": {
+      "options": {
+        "default": "ברירת מחדל / לפי התוכנית",
+        "realtime": "זמן אמת",
+        "delayed": "עיכוב של 15 דקות"
+      }
+    }
   }
 }

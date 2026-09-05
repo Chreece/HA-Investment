@@ -44,5 +44,32 @@
         "name": "Număr poziții"
       }
     }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "API-uri de date de piață",
+        "description": "Furnizori premium opționali. Introdu propriile chei API. Sursele plătite configurate au prioritate, iar furnizorii gratuiți rămân fallback automat.",
+        "data": {
+          "twelve_data_api_key": "Cheie API Twelve Data",
+          "alpha_vantage_api_key": "Cheie API Alpha Vantage",
+          "alpha_vantage_entitlement": "Drept de date Alpha Vantage"
+        },
+        "data_description": {
+          "twelve_data_api_key": "Lasă gol pentru a dezactiva Twelve Data.",
+          "alpha_vantage_api_key": "Lasă gol pentru a dezactiva Alpha Vantage.",
+          "alpha_vantage_entitlement": "Alege actualitatea datelor inclusă în planul Alpha Vantage."
+        }
+      }
+    }
+  },
+  "selector": {
+    "alpha_vantage_entitlement": {
+      "options": {
+        "default": "Implicit / conform planului",
+        "realtime": "În timp real",
+        "delayed": "Întârziere 15 minute"
+      }
+    }
   }
 }
