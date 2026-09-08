@@ -1,0 +1,71 @@
+name: Fix websocket preference schema
+
+on:
+  push:
+    branches:
+      - fix-websocket-import
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    if: github.event.head_commit.message == 'Fix websocket preference schema import regression'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.14'
+      - name: Patch websocket schema
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('custom_components/investment/websocket.py')
+          text = path.read_text(encoding='utf-8')
+          old = '''@websocket_api.websocket_command(
+              vol.Schema(
+                  {
+                      vol.Required("type"): "investment/set_preferences",
+                      vol.Optional("base_currency"): vol.All(str, vol.Length(min=3, max=3)),
+                      vol.Optional("language"): vol.In((DEFAULT_UI_LANGUAGE, *SUPPORTED_UI_LANGUAGES)),
+                      vol.Optional("incognito"): bool,
+                      vol.Optional("incognito_reveal_seconds"): vol.All(
+                          vol.Coerce(int), vol.Range(min=0, max=MAX_INCOGNITO_REVEAL_SECONDS)
+                      ),
+                      vol.Optional("exposed_entities"): [vol.In(EXPOSABLE_ENTITY_METRICS)],
+                  },
+                  extra=vol.REMOVE_EXTRA,
+              )
+          )'''
+          new = '''@websocket_api.websocket_command(
+              {
+                  vol.Required("type"): "investment/set_preferences",
+                  vol.Optional("base_currency"): vol.All(str, vol.Length(min=3, max=3)),
+                  vol.Optional("language"): vol.In((DEFAULT_UI_LANGUAGE, *SUPPORTED_UI_LANGUAGES)),
+                  vol.Optional("incognito"): bool,
+                  vol.Optional("incognito_reveal_seconds"): vol.All(
+                      vol.Coerce(int), vol.Range(min=0, max=MAX_INCOGNITO_REVEAL_SECONDS)
+                  ),
+                  vol.Optional("exposed_entities"): [vol.In(EXPOSABLE_ENTITY_METRICS)],
+                  # Accept retired indication-only keys only so a cached old main
+                  # panel becomes a silent no-op instead of surfacing an error.
+                  vol.Optional("developer_indicator_unlocked"): object,
+                  vol.Optional("indication_preferences"): object,
+                  vol.Optional("indication_disclaimer_version"): object,
+                  vol.Optional("indication_disclaimer_region"): object,
+                  vol.Optional("indication_disclaimer_language"): object,
+              }
+          )'''
+          if old not in text:
+              raise SystemExit('problematic preference decorator not found')
+          path.write_text(text.replace(old, new, 1), encoding='utf-8')
+          PY
+          python -m compileall -q custom_components/investment
+          git config user.name 'Chris Chreece'
+          git config user.email '68458228+Chreece@users.noreply.github.com'
+          git add custom_components/investment/websocket.py
+          git diff --cached --quiet && exit 0
+          git commit -m 'Fix websocket decorator schema regression'
+          git push origin HEAD:fix-websocket-import
