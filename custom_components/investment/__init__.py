@@ -11,10 +11,11 @@ from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.typing import ConfigType
 
 from .const import DOMAIN, PANEL_ASSET_REVISION, PANEL_ICON, PANEL_NAME, PANEL_URL, STATIC_URL, VERSION, sidebar_title
-from .manager import InvestmentManager
-from .websocket import async_register_commands
+from .runtime_manager import InvestmentManager
+from .runtime_websocket import async_register_commands
 
 _LOGGER = logging.getLogger(__name__)
+_PLATFORMS = ["sensor", "update"]
 
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
@@ -30,12 +31,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     manager = InvestmentManager(hass, entry)
     await manager.async_initialize()
     hass.data[DOMAIN] = {"entry_id": entry.entry_id, "manager": manager}
-    await hass.config_entries.async_forward_entry_setups(entry, ["sensor"])
+    await hass.config_entries.async_forward_entry_setups(entry, _PLATFORMS)
 
     www_path = Path(__file__).parent / "www"
     await hass.http.async_register_static_paths(
         [StaticPathConfig(STATIC_URL, str(www_path), False)]
     )
+    runtime_asset = www_path / "investment-panel-runtime.js"
+    runtime_revision = runtime_asset.stat().st_mtime_ns if runtime_asset.exists() else 0
 
     if frontend.async_panel_exists(hass, PANEL_URL):
         frontend.async_remove_panel(hass, PANEL_URL)
@@ -44,7 +47,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         hass=hass,
         frontend_url_path=PANEL_URL,
         webcomponent_name=PANEL_NAME,
-        module_url=f"{STATIC_URL}/investment-panel.js?v={PANEL_ASSET_REVISION}",
+        module_url=f"{STATIC_URL}/investment-panel-runtime.js?v={PANEL_ASSET_REVISION}-{runtime_revision}",
         sidebar_title=sidebar_title(hass.config.language),
         sidebar_icon=PANEL_ICON,
         require_admin=False,
@@ -57,7 +60,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload HA Investment."""
-    if not await hass.config_entries.async_unload_platforms(entry, ["sensor"]):
+    if not await hass.config_entries.async_unload_platforms(entry, _PLATFORMS):
         return False
     if frontend.async_panel_exists(hass, PANEL_URL):
         frontend.async_remove_panel(hass, PANEL_URL)

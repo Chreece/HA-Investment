@@ -50,6 +50,17 @@ class MarketProvider(ABC):
     async def async_search(self, query: str, base_currency: str) -> Sequence[SearchResult]:
         """Search assets."""
 
+    async def async_discover(
+        self, base_currency: str, category: str | None = None, *, limit: int = 20
+    ) -> Sequence[SearchResult]:
+        """Return a provider-owned discovery universe.
+
+        Search and discovery are intentionally separate. Search resolves a
+        user-entered query; discovery supplies a bounded candidate universe for
+        the indication engine. Providers that cannot enumerate useful candidates
+        simply return an empty sequence.
+        """
+        return []
 
     @abstractmethod
     async def async_quote(self, provider_id: str) -> Quote:

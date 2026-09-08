@@ -8,11 +8,11 @@ from .base import MarketProvider, ProviderError
 from ..search import CRYPTO_NAMES, crypto_query_score
 from ..models import HistoryPoint, Quote, SearchResult
 
-# Long-horizon analysis histories are weekly across providers. Kraken's OHLC
+# Long-horizon indication histories are weekly across providers. Kraken's OHLC
 # API is bounded by row count, so weekly sampling both reaches the requested
 # five-year horizon and keeps the scorer comparable with Yahoo/Twelve Data/
 # Alpha Vantage 5y histories.
-_INTERVAL = {"1d": 5, "7d": 30, "1m": 60, "3m": 240, "1y": 1440, "5y": 1440}
+_INTERVAL = {"1d": 5, "7d": 30, "1m": 60, "3m": 240, "1y": 1440, "5y": 10080}
 
 _HORIZON = {
     "1d": 86400,
@@ -104,6 +104,53 @@ class KrakenProvider(MarketProvider):
         scored.sort(key=lambda x: (x[0], x[1].symbol))
         return [item for _, item in scored[:12]]
 
+    async def async_discover(
+        self, base_currency: str, category: str | None = None, *, limit: int = 20
+    ) -> Sequence[SearchResult]:
+        """Enumerate a bounded crypto universe quoted in the portfolio currency.
+
+        Kraken exposes its complete public AssetPairs catalog, so crypto
+        discovery does not need to pretend that the user's current holdings or
+        a text search are the market universe. Known liquid symbols are ordered
+        first and the remaining pairs are still eligible behind them.
+        """
+        if category not in (None, "crypto"):
+            return []
+        quote_currency = str(base_currency or "").upper().strip()
+        if not quote_currency:
+            return []
+        pairs = await self._asset_pairs()
+        priority = {symbol: idx for idx, symbol in enumerate(CRYPTO_NAMES)}
+        rows: list[tuple[int, str, SearchResult]] = []
+        seen: set[str] = set()
+        for pair_id, item in pairs.items():
+            wsname = item.get("wsname") or item.get("altname") or pair_id
+            if "/" in wsname:
+                raw_base, raw_quote = wsname.split("/", 1)
+            else:
+                raw_base, raw_quote = item.get("base", ""), item.get("quote", "")
+            base, quote = _clean_asset(raw_base), _clean_asset(raw_quote)
+            if quote != quote_currency or not base or base == quote or base in seen:
+                continue
+            seen.add(base)
+            known_rank = priority.get(base, len(priority) + 100)
+            rows.append(
+                (
+                    known_rank,
+                    base,
+                    SearchResult(
+                        provider=self.provider_id,
+                        provider_id=pair_id,
+                        symbol=f"{base}/{quote}",
+                        name=f"{(CRYPTO_NAMES.get(base) or (base,))[0]} / {quote}",
+                        category="crypto",
+                        currency=quote,
+                        exchange="Kraken",
+                    ),
+                )
+            )
+        rows.sort(key=lambda row: (row[0], row[1]))
+        return [row[2] for row in rows[: max(1, int(limit))]]
 
     async def _pair_info(self, provider_id: str) -> dict:
         pairs = await self._asset_pairs()

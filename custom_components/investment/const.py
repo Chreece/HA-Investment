@@ -4,7 +4,7 @@ from __future__ import annotations
 DOMAIN = "investment"
 NAME = "HA Investment"
 VERSION = "0.4.0"
-PANEL_ASSET_REVISION = "0.4.0-r24-main"
+PANEL_ASSET_REVISION = "0.4.0-r25"
 PANEL_URL = "investment"
 PANEL_NAME = "investment-panel"
 PANEL_TITLE = "Investments"
@@ -29,6 +29,9 @@ DEFAULT_ALPHA_VANTAGE_ENTITLEMENT = "default"
 ALPHA_VANTAGE_ENTITLEMENTS = ("default", "realtime", "delayed")
 DEFAULT_INCOGNITO_REVEAL_SECONDS = 5
 MAX_INCOGNITO_REVEAL_SECONDS = 300
+INDICATION_DISCLAIMER_VERSION = 2
+INDICATION_LEGAL_REGIONS = ("germany", "eu_eea", "uk", "switzerland", "us", "canada", "australia_nz", "other")
+DEFAULT_INDICATION_LEGAL_REGION = "other"
 SUPPORTED_PERIODS = ("1d", "7d", "1m", "3m", "1y", "5y")
 CATEGORIES = ("crypto", "etf", "stock", "fund", "index", "commodity", "fx", "other")
 TRANSACTION_COST_TYPES = ("platform", "bank", "exchange", "tax", "other")
@@ -46,6 +49,23 @@ EXPOSABLE_ENTITY_METRICS = (
     "holding_count",
 )
 
+DEFAULT_INDICATION_PREFERENCES = {
+    "scope": "discover",
+    "mode": "deterministic",
+    "amount": None,
+    "category": None,
+    "ai_task_entity_id": None,
+    "risk_tolerance": "medium",
+    "horizon": "medium",
+    "strategy": "adaptive",
+    "overlap_policy": "penalize",
+    "overlap_threshold_pct": 20.0,
+    "diversification": "medium",
+    "max_candidate_pct": None,
+    "min_confidence_pct": 45.0,
+    "min_cash_reserve_pct": 0.0,
+    "whole_units_only": False,
+}
 
 SIGNAL_ENTITY_EXPOSURE_CHANGED = f"{DOMAIN}_entity_exposure_changed"
 
