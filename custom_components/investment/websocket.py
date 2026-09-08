@@ -350,19 +350,23 @@ async def ws_remove(hass: HomeAssistant, connection, msg: dict[str, Any]) -> Non
 
 
 @websocket_api.websocket_command(
-    vol.Schema(
-        {
-            vol.Required("type"): "investment/set_preferences",
-            vol.Optional("base_currency"): vol.All(str, vol.Length(min=3, max=3)),
-            vol.Optional("language"): vol.In((DEFAULT_UI_LANGUAGE, *SUPPORTED_UI_LANGUAGES)),
-            vol.Optional("incognito"): bool,
-            vol.Optional("incognito_reveal_seconds"): vol.All(
-                vol.Coerce(int), vol.Range(min=0, max=MAX_INCOGNITO_REVEAL_SECONDS)
-            ),
-            vol.Optional("exposed_entities"): [vol.In(EXPOSABLE_ENTITY_METRICS)],
-        },
-        extra=vol.REMOVE_EXTRA,
-    )
+    {
+        vol.Required("type"): "investment/set_preferences",
+        vol.Optional("base_currency"): vol.All(str, vol.Length(min=3, max=3)),
+        vol.Optional("language"): vol.In((DEFAULT_UI_LANGUAGE, *SUPPORTED_UI_LANGUAGES)),
+        vol.Optional("incognito"): bool,
+        vol.Optional("incognito_reveal_seconds"): vol.All(
+            vol.Coerce(int), vol.Range(min=0, max=MAX_INCOGNITO_REVEAL_SECONDS)
+        ),
+        vol.Optional("exposed_entities"): [vol.In(EXPOSABLE_ENTITY_METRICS)],
+        # Accept retired indication-only keys only so a cached old main
+        # panel becomes a silent no-op instead of surfacing an error.
+        vol.Optional("developer_indicator_unlocked"): object,
+        vol.Optional("indication_preferences"): object,
+        vol.Optional("indication_disclaimer_version"): object,
+        vol.Optional("indication_disclaimer_region"): object,
+        vol.Optional("indication_disclaimer_language"): object,
+    }
 )
 @websocket_api.async_response
 async def ws_preferences(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
