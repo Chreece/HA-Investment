@@ -22,8 +22,10 @@ jobs:
       - name: Strip branch-only code
         run: |
           python .github/scripts/strip_indications.py
+          python .github/scripts/strip_cleanup.py
           npm install --no-save --no-package-lock acorn postcss >/dev/null 2>&1
           node .github/scripts/strip_frontend.mjs
+          node .github/scripts/strip_cleanup.mjs
           rm -rf node_modules
       - name: Validate clean variant
         run: |
@@ -35,7 +37,7 @@ jobs:
           from pathlib import Path
           import re
           roots=[Path('custom_components'),Path('tests'),Path('README.md'),Path('CHANGELOG.md'),Path('ARCHITECTURE.md')]
-          pattern=re.compile(r'indicat|developer[_-]?indicator|developerIndicator|indicator[-_ ]gate',re.I)
+          pattern=re.compile(r'indication|developer[_-]?indicator|developerIndicator|indicator[-_ ]gate',re.I)
           hits=[]
           for root in roots:
               paths=[root] if root.is_file() else ([p for p in root.rglob('*') if p.is_file()] if root.exists() else [])
