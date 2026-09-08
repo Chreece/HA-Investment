@@ -1,0 +1,59 @@
+name: Strip indications from main line
+
+on:
+  push:
+    branches:
+      - remove-indications-main
+
+permissions:
+  contents: write
+
+jobs:
+  strip:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Strip branch-only code
+        run: |
+          python .github/scripts/strip_indications.py
+          npm install --no-save --no-package-lock acorn postcss >/dev/null 2>&1
+          node .github/scripts/strip_frontend.mjs
+          rm -rf node_modules
+      - name: Validate clean variant
+        run: |
+          python -m pip install --disable-pip-version-check pytest >/dev/null
+          python -m compileall -q custom_components/investment
+          node --check custom_components/investment/www/investment-panel.js
+          python -m pytest -q tests
+          python - <<'PY'
+          from pathlib import Path
+          import re
+          roots=[Path('custom_components'),Path('tests'),Path('README.md'),Path('CHANGELOG.md'),Path('ARCHITECTURE.md')]
+          pattern=re.compile(r'indicat|developer[_-]?indicator|developerIndicator|indicator[-_ ]gate',re.I)
+          hits=[]
+          for root in roots:
+              paths=[root] if root.is_file() else ([p for p in root.rglob('*') if p.is_file()] if root.exists() else [])
+              for path in paths:
+                  try:text=path.read_text(encoding='utf-8')
+                  except Exception:continue
+                  for n,line in enumerate(text.splitlines(),1):
+                      if pattern.search(line):hits.append(f'{path}:{n}: {line.strip()[:220]}')
+          if hits:
+              print('\n'.join(hits[:300]))
+              raise SystemExit(f'Release line still contains {len(hits)} branch-only references')
+          print('INDICATION_REFERENCES=0')
+          PY
+      - name: Commit clean code
+        run: |
+          git config user.name "Chris Chreece"
+          git config user.email "68458228+Chreece@users.noreply.github.com"
+          git add custom_components tests
+          git diff --cached --quiet && exit 0
+          git commit -m "Move investment indications to dedicated branch"
+          git push origin HEAD:remove-indications-main
