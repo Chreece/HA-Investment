@@ -8,7 +8,11 @@ from .base import MarketProvider, ProviderError
 from ..search import CRYPTO_NAMES, crypto_query_score
 from ..models import HistoryPoint, Quote, SearchResult
 
-_INTERVAL = {"1d": 5, "7d": 30, "1m": 60, "3m": 240, "1y": 1440, "5y": 1440}
+# Long-horizon indication histories are weekly across providers. Kraken's OHLC
+# API is bounded by row count, so weekly sampling both reaches the requested
+# five-year horizon and keeps the scorer comparable with Yahoo/Twelve Data/
+# Alpha Vantage 5y histories.
+_INTERVAL = {"1d": 5, "7d": 30, "1m": 60, "3m": 240, "1y": 1440, "5y": 10080}
 
 _HORIZON = {
     "1d": 86400,
