@@ -14,8 +14,6 @@ from .const import (
     DEFAULT_UI_LANGUAGE,
     DOMAIN,
     EXPOSABLE_ENTITY_METRICS,
-    INDICATION_DISCLAIMER_VERSION,
-    INDICATION_LEGAL_REGIONS,
     MAX_INCOGNITO_REVEAL_SECONDS,
     SUPPORTED_PERIODS,
     SUPPORTED_UI_LANGUAGES,
@@ -357,19 +355,19 @@ async def ws_remove(hass: HomeAssistant, connection, msg: dict[str, Any]) -> Non
         vol.Optional("base_currency"): vol.All(str, vol.Length(min=3, max=3)),
         vol.Optional("language"): vol.In((DEFAULT_UI_LANGUAGE, *SUPPORTED_UI_LANGUAGES)),
         vol.Optional("incognito"): bool,
-        vol.Optional("incognito_reveal_seconds"): vol.All(vol.Coerce(int), vol.Range(min=0, max=MAX_INCOGNITO_REVEAL_SECONDS)),
-        vol.Optional("developer_indicator_unlocked"): bool,
-        vol.Optional("indication_preferences"): dict,
+        vol.Optional("incognito_reveal_seconds"): vol.All(
+            vol.Coerce(int), vol.Range(min=0, max=MAX_INCOGNITO_REVEAL_SECONDS)
+        ),
         vol.Optional("exposed_entities"): [vol.In(EXPOSABLE_ENTITY_METRICS)],
-        vol.Optional("indication_disclaimer_version"): vol.All(vol.Coerce(int), vol.Range(min=0, max=INDICATION_DISCLAIMER_VERSION)),
-        vol.Optional("indication_disclaimer_region"): vol.In(INDICATION_LEGAL_REGIONS),
-        vol.Optional("indication_disclaimer_language"): vol.In((DEFAULT_UI_LANGUAGE, *SUPPORTED_UI_LANGUAGES)),
     }
 )
 @websocket_api.async_response
 async def ws_preferences(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
     try:
-        preference_keys = {"base_currency", "language", "incognito", "incognito_reveal_seconds", "developer_indicator_unlocked", "indication_preferences", "exposed_entities", "indication_disclaimer_version", "indication_disclaimer_region", "indication_disclaimer_language"}
+        preference_keys = {
+            "base_currency", "language", "incognito",
+            "incognito_reveal_seconds", "exposed_entities",
+        }
         if not any(key in msg for key in preference_keys):
             raise ValueError("At least one preference is required")
         user = await _manager(hass).async_set_preferences(
@@ -378,12 +376,7 @@ async def ws_preferences(hass: HomeAssistant, connection, msg: dict[str, Any]) -
             language=msg.get("language"),
             incognito=msg.get("incognito"),
             incognito_reveal_seconds=msg.get("incognito_reveal_seconds"),
-            developer_indicator_unlocked=msg.get("developer_indicator_unlocked"),
-            indication_preferences=msg.get("indication_preferences"),
             exposed_entities=msg.get("exposed_entities"),
-            indication_disclaimer_version=msg.get("indication_disclaimer_version"),
-            indication_disclaimer_region=msg.get("indication_disclaimer_region"),
-            indication_disclaimer_language=msg.get("indication_disclaimer_language"),
         )
         connection.send_result(
             msg["id"],
@@ -391,14 +384,10 @@ async def ws_preferences(hass: HomeAssistant, connection, msg: dict[str, Any]) -
                 "base_currency": user["base_currency"],
                 "language": user.get("language", DEFAULT_UI_LANGUAGE),
                 "incognito": bool(user.get("incognito", False)),
-                "incognito_reveal_seconds": int(user.get("incognito_reveal_seconds", DEFAULT_INCOGNITO_REVEAL_SECONDS)),
-                "developer_indicator_unlocked": bool(user.get("developer_indicator_unlocked", False)),
-                "indication_preferences": user.get("indication_preferences") or {},
+                "incognito_reveal_seconds": int(
+                    user.get("incognito_reveal_seconds", DEFAULT_INCOGNITO_REVEAL_SECONDS)
+                ),
                 "exposed_entities": list(user.get("exposed_entities") or []),
-                "indication_disclaimer_version": int(user.get("indication_disclaimer_version") or 0),
-                "indication_disclaimer_accepted_at": user.get("indication_disclaimer_accepted_at"),
-                "indication_disclaimer_region": user.get("indication_disclaimer_region"),
-                "indication_disclaimer_language": user.get("indication_disclaimer_language"),
             },
         )
     except Exception as err:
@@ -424,7 +413,6 @@ async def ws_history(hass: HomeAssistant, connection, msg: dict[str, Any]) -> No
         connection.send_error(msg["id"], "history_error", str(err))
 
 
-
 @websocket_api.websocket_command(
     {
         vol.Required("type"): "investment/set_category_expense",
@@ -445,60 +433,6 @@ async def ws_category_expense(hass: HomeAssistant, connection, msg: dict[str, An
     except Exception as err:
         connection.send_error(msg["id"], "category_expense_error", str(err))
 
-@websocket_api.websocket_command(
-    {
-        vol.Required("type"): "investment/indication",
-        vol.Optional("candidates", default=[]): [dict],
-        vol.Optional("amount"): vol.Any(None, vol.Coerce(float)),
-        vol.Optional("category"): vol.Any(None, vol.In(["crypto", "etf", "stock", "fund", "index", "commodity", "fx", "other"])),
-        vol.Optional("scope"): vol.In(["discover", "portfolio", "search"]),
-        vol.Optional("mode", default="deterministic"): vol.In(["deterministic", "deterministic_ai", "full_ai"]),
-        vol.Optional("ai_task_entity_id"): vol.Any(None, str),
-        # Compatibility with r10 clients; new clients send ai_task_entity_id.
-        vol.Optional("ai_agent_id"): vol.Any(None, str),
-        vol.Optional("risk_tolerance", default="medium"): vol.In(["very_low", "low", "medium", "high", "very_high"]),
-        vol.Optional("horizon", default="medium"): vol.In(["very_short", "short", "medium", "long", "very_long"]),
-        vol.Optional("strategy", default="adaptive"): vol.In(["adaptive", "balanced", "momentum", "trend", "risk_adjusted", "pullback"]),
-        vol.Optional("overlap_policy", default="penalize"): vol.In(["allow", "penalize", "exclude"]),
-        vol.Optional("overlap_threshold_pct", default=20.0): vol.Coerce(float),
-        vol.Optional("diversification", default="medium"): vol.In(["low", "medium", "high"]),
-        vol.Optional("max_candidate_pct"): vol.Any(None, vol.Coerce(float)),
-        vol.Optional("min_confidence_pct", default=45.0): vol.Coerce(float),
-        vol.Optional("min_cash_reserve_pct", default=0.0): vol.Coerce(float),
-        vol.Optional("whole_units_only", default=False): bool,
-    }
-)
-@websocket_api.async_response
-async def ws_indication(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
-    try:
-        ai_task_entity_id = msg.get("ai_task_entity_id")
-        # The old field is accepted only when it already names an ai_task entity;
-        # Conversation agent IDs are intentionally not forwarded to AI Task.
-        if not ai_task_entity_id and str(msg.get("ai_agent_id") or "").startswith("ai_task."):
-            ai_task_entity_id = msg.get("ai_agent_id")
-        result = await _manager(hass).async_indication(
-            _user_id(connection),
-            candidates=msg.get("candidates"),
-            amount=msg.get("amount"),
-            category=msg.get("category"),
-            scope=msg.get("scope"),
-            mode=msg.get("mode", "deterministic"),
-            ai_task_entity_id=ai_task_entity_id,
-            risk_tolerance=msg.get("risk_tolerance", "medium"),
-            horizon=msg.get("horizon", "medium"),
-            strategy=msg.get("strategy", "adaptive"),
-            overlap_policy=msg.get("overlap_policy", "penalize"),
-            overlap_threshold_pct=msg.get("overlap_threshold_pct", 20.0),
-            diversification=msg.get("diversification", "medium"),
-            max_candidate_pct=msg.get("max_candidate_pct"),
-            min_confidence_pct=msg.get("min_confidence_pct", 45.0),
-            min_cash_reserve_pct=msg.get("min_cash_reserve_pct", 0.0),
-            whole_units_only=bool(msg.get("whole_units_only", False)),
-        )
-        connection.send_result(msg["id"], result)
-    except Exception as err:
-        connection.send_error(msg["id"], "indication_error", str(err))
-
 
 def async_register_commands(hass: HomeAssistant) -> None:
     """Register commands once for the integration domain."""
@@ -514,4 +448,3 @@ def async_register_commands(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, ws_preferences)
     websocket_api.async_register_command(hass, ws_category_expense)
     websocket_api.async_register_command(hass, ws_history)
-    websocket_api.async_register_command(hass, ws_indication)

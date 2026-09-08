@@ -77,45 +77,6 @@ class FrankfurterProvider(MarketProvider):
             for a, b in pairs[:10]
         ]
 
-    async def async_discover(
-        self, base_currency: str, category: str | None = None, *, limit: int = 20
-    ) -> Sequence[SearchResult]:
-        """Enumerate supported FX pairs against the portfolio currency."""
-        if category not in (None, "fx"):
-            return []
-        quote = str(base_currency or "").upper().strip()
-        currencies = await self._load_currencies()
-        if quote not in {str(code).upper() for code in currencies}:
-            return []
-        majors = [
-            "USD", "EUR", "GBP", "JPY", "CHF", "CAD", "AUD", "NZD",
-            "SEK", "NOK", "DKK", "PLN", "CZK", "HUF", "RON", "BGN",
-            "TRY", "CNY", "HKD", "SGD", "INR", "KRW", "BRL", "MXN", "ZAR",
-        ]
-        order = {code: idx for idx, code in enumerate(majors)}
-        rows: list[tuple[int, str, SearchResult]] = []
-        for raw_code, info in currencies.items():
-            code = str(raw_code).upper()
-            if code == quote:
-                continue
-            name = str(info.get("name") or info.get("currency") or code) if isinstance(info, dict) else str(info)
-            rows.append(
-                (
-                    order.get(code, len(order) + 100),
-                    code,
-                    SearchResult(
-                        provider=self.provider_id,
-                        provider_id=f"{code}/{quote}",
-                        symbol=f"{code}/{quote}",
-                        name=f"{name} / {quote}",
-                        category="fx",
-                        currency=quote,
-                        exchange="Institutional reference rates",
-                    ),
-                )
-            )
-        rows.sort(key=lambda row: (row[0], row[1]))
-        return [row[2] for row in rows[: max(1, int(limit))]]
 
     async def async_rate(
         self, base: str, quote: str, *, on_date: str | None = None
