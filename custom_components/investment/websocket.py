@@ -350,16 +350,19 @@ async def ws_remove(hass: HomeAssistant, connection, msg: dict[str, Any]) -> Non
 
 
 @websocket_api.websocket_command(
-    {
-        vol.Required("type"): "investment/set_preferences",
-        vol.Optional("base_currency"): vol.All(str, vol.Length(min=3, max=3)),
-        vol.Optional("language"): vol.In((DEFAULT_UI_LANGUAGE, *SUPPORTED_UI_LANGUAGES)),
-        vol.Optional("incognito"): bool,
-        vol.Optional("incognito_reveal_seconds"): vol.All(
-            vol.Coerce(int), vol.Range(min=0, max=MAX_INCOGNITO_REVEAL_SECONDS)
-        ),
-        vol.Optional("exposed_entities"): [vol.In(EXPOSABLE_ENTITY_METRICS)],
-    }
+    vol.Schema(
+        {
+            vol.Required("type"): "investment/set_preferences",
+            vol.Optional("base_currency"): vol.All(str, vol.Length(min=3, max=3)),
+            vol.Optional("language"): vol.In((DEFAULT_UI_LANGUAGE, *SUPPORTED_UI_LANGUAGES)),
+            vol.Optional("incognito"): bool,
+            vol.Optional("incognito_reveal_seconds"): vol.All(
+                vol.Coerce(int), vol.Range(min=0, max=MAX_INCOGNITO_REVEAL_SECONDS)
+            ),
+            vol.Optional("exposed_entities"): [vol.In(EXPOSABLE_ENTITY_METRICS)],
+        },
+        extra=vol.REMOVE_EXTRA,
+    )
 )
 @websocket_api.async_response
 async def ws_preferences(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
@@ -369,7 +372,10 @@ async def ws_preferences(hass: HomeAssistant, connection, msg: dict[str, Any]) -
             "incognito_reveal_seconds", "exposed_entities",
         }
         if not any(key in msg for key in preference_keys):
-            raise ValueError("At least one preference is required")
+            # Older cached panels may still send retired preference fields.
+            # Treat them as a silent no-op instead of surfacing an error.
+            connection.send_result(msg["id"], {})
+            return
         user = await _manager(hass).async_set_preferences(
             _user_id(connection),
             base_currency=msg.get("base_currency"),
