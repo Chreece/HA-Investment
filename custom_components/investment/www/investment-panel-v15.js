@@ -1,4 +1,4 @@
-import "./investment-panel-runtime.js?v=0.4.0-r37";
+import "./investment-panel-runtime.js?v=0.4.0-r36";
 
 // V15 score-help guard.
 // The historical market-score bubble must not open merely because result DOM
