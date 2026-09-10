@@ -52,7 +52,6 @@ jobs:
           set -euo pipefail
           python - <<'PY'
           from pathlib import Path
-          import re
 
           indication = Path('custom_components/investment/indication.py')
           runtime = Path('custom_components/investment/www/investment-panel-runtime.js')
@@ -67,23 +66,37 @@ jobs:
           indication.write_text(s, encoding='utf-8')
 
           s = runtime.read_text(encoding='utf-8')
-          marker = 'const isScoreHelp=target=>target?.classList?.contains("signal-help");'
-          if marker not in s:
-              pattern = r'modal\.querySelectorAll\("\.help-label"\)\.forEach\(target=>\{.*?\}\);'
-              replacement = '''const coarsePointer=()=>!!window.matchMedia?.("(hover:none), (pointer:coarse)")?.matches;
-          const trueHoverMouse=()=>!!window.matchMedia?.("(hover:hover) and (pointer:fine)")?.matches;
-          const isMouseHover=e=>e?.pointerType==="mouse"&&trueHoverMouse()&&!coarsePointer();
-          const isScoreHelp=target=>target?.classList?.contains("signal-help");
-          modal.querySelectorAll(".help-label").forEach(target=>{target.classList.remove("help-open","help-touch");target.removeAttribute("data-help-source");target.removeAttribute("data-help-hover-ready");target.setAttribute("aria-expanded","false");target.addEventListener("pointerenter",e=>{if(isScoreHelp(target))return;if(isMouseHover(e))target.setAttribute("data-help-hover-ready","1");});target.addEventListener("pointermove",e=>{if(isScoreHelp(target))return;if(!isMouseHover(e)||target.getAttribute("data-help-hover-ready")!=="1")return;if(target.getAttribute("data-help-source")!=="hover")openHelp(target,{touch:false,source:"hover"});});target.addEventListener("pointerleave",e=>{target.removeAttribute("data-help-hover-ready");if(isScoreHelp(target))return;if(isMouseHover(e)&&target.getAttribute("data-help-source")==="hover")closeHelp(null);});});'''
-              s, count = re.subn(pattern, replacement, s, count=1, flags=re.S)
-              assert count == 1, 'runtime help block not found'
-          old_click = 'const touch=lastPointerType==="touch"||lastPointerType==="pen"||coarsePointer();if(touch)toggleHelp(target,{touch:true,source:"tap"});else closeHelp(null);return;}closeHelp(null);'
-          if old_click in s:
-              s = s.replace(old_click, 'const touch=lastPointerType==="touch"||lastPointerType==="pen"||coarsePointer();const explicitScore=isScoreHelp(target);if(touch||explicitScore)toggleHelp(target,{touch,source:touch?"tap":"click"});else closeHelp(null);return;}closeHelp(null);', 1)
+          old_hover = 'const isMouseHover=e=>e?.pointerType==="mouse"&&trueHoverMouse()&&!coarsePointer();'
+          new_hover = 'const isMouseHover=e=>e?.pointerType==="mouse"&&trueHoverMouse()&&!coarsePointer()&&!e?.target?.closest?.(".signal-help");'
+          if old_hover in s:
+              s = s.replace(old_hover, new_hover, 1)
+          elif new_hover not in s:
+              raise SystemExit('runtime: isMouseHover anchor missing')
+
+          # Preserve the existing generic desktop-click contract while adding an
+          # explicit score click/tap handler before the modal-level fallback.
+          marker = 'modal.addEventListener("click",e=>{'
+          score_handler = '''modal.querySelectorAll(".signal-help").forEach(target=>{
+        target.addEventListener("click",e=>{
+          const touch=lastPointerType==="touch"||lastPointerType==="pen"||coarsePointer();
+          toggleHelp(target,{touch,source:touch?"tap":"click"});
+          e.preventDefault();
+          e.stopPropagation();
+        });
+      });
+      '''
+          if 'target.addEventListener("click",e=>{\n          const touch=lastPointerType==="touch"' not in s:
+              if marker not in s:
+                  raise SystemExit('runtime: modal click marker missing')
+              s = s.replace(marker, score_handler + marker, 1)
+
+          # Remove native browser title tooltips on score labels.
+          needle = 'const modal=root.querySelector(".indication-modal");'
           if 'signal-help[title]' not in s:
-              needle = 'const modal=root.querySelector(".indication-modal");'
-              assert needle in s, 'runtime modal anchor not found'
+              if needle not in s:
+                  raise SystemExit('runtime: modal query marker missing')
               s = s.replace(needle, needle + '\n    modal?.querySelectorAll(".signal-help[title]").forEach(el=>el.removeAttribute("title"));', 1)
+
           runtime.write_text(s, encoding='utf-8')
           PY
       - name: Validate V15 changes
