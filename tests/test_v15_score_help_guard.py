@@ -7,14 +7,14 @@ def read(path: str) -> str:
     return (ROOT / path).read_text(encoding="utf-8")
 
 
-def test_v15_panel_revision_and_wrapper_are_wired():
+def test_v15_panel_wrapper_is_wired_without_changing_existing_revision():
     const = read("custom_components/investment/const.py")
     init = read("custom_components/investment/__init__.py")
     wrapper = read("custom_components/investment/www/investment-panel-v15.js")
 
-    assert 'PANEL_ASSET_REVISION = "0.4.0-r37"' in const
+    assert 'PANEL_ASSET_REVISION = "0.4.0-r36"' in const
     assert 'module_url=f"{STATIC_URL}/investment-panel-v15.js?v={PANEL_ASSET_REVISION}-{runtime_revision}"' in init
-    assert 'import "./investment-panel-runtime.js?v=0.4.0-r37";' in wrapper
+    assert 'import "./investment-panel-runtime.js?v=0.4.0-r36";' in wrapper
 
 
 def test_score_help_is_blocked_until_genuine_mouse_motion():
