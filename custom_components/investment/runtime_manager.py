@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from contextvars import ContextVar
 from copy import deepcopy
-from typing import Any
+from typing import Any, Callable
 
 from .manager import InvestmentManager as CoreInvestmentManager
 from .portfolio_context import (
@@ -180,8 +180,11 @@ class InvestmentManager(CoreInvestmentManager):
         min_confidence_pct: float = 45.0,
         min_cash_reserve_pct: float = 0.0,
         whole_units_only: bool = False,
+        whole_unit_categories: list[str] | None = None,
         portfolio_context: str = "use",
         existing_instruments: str = "allow",
+        response_language: str | None = None,
+        progress_callback: Callable[[int, str, dict[str, Any] | None], None] | None = None,
     ) -> dict[str, Any]:
         portfolio_context = str(portfolio_context or "use").strip().lower()
         existing_instruments = str(existing_instruments or "allow").strip().lower()
@@ -196,6 +199,11 @@ class InvestmentManager(CoreInvestmentManager):
         if resolved_scope == "portfolio" and existing_instruments == "exclude":
             raise ValueError("Portfolio source contains only existing instruments")
 
+        if progress_callback is not None:
+            try:
+                progress_callback(3, "starting", None)
+            except Exception as err:
+                _LOGGER.debug("Investment indication runtime progress callback failed: %s", err)
         actual_portfolio = await super().async_portfolio(user_id)
         actual_holdings = list(actual_portfolio.get("holdings") or [])
         owned_index = build_owned_identity_index(actual_holdings)
@@ -236,6 +244,11 @@ class InvestmentManager(CoreInvestmentManager):
                 min_confidence_pct=min_confidence_pct,
                 min_cash_reserve_pct=min_cash_reserve_pct,
                 whole_units_only=whole_units_only,
+                whole_unit_categories=whole_unit_categories,
+                portfolio_context=portfolio_context,
+                existing_instruments=existing_instruments,
+                response_language=response_language,
+                progress_callback=progress_callback,
             )
         finally:
             _FILTER_STATS.reset(stats_token)
@@ -244,7 +257,13 @@ class InvestmentManager(CoreInvestmentManager):
             _PORTFOLIO_CONTEXT.reset(context_token)
 
         for item in result.get("results") or []:
-            item.update(exposure_profile(item))
+            profile = exposure_profile(item)
+            if item.get("economic_sleeve"):
+                profile["exposure_class"] = item["economic_sleeve"]
+                profile["allocatable_default"] = bool(
+                    item.get("allocatable_economic_exposure", True)
+                )
+            item.update(profile)
             item.update(context_score_fields(item))
             item["already_owned"] = find_owned_match(item, owned_index) is not None
 

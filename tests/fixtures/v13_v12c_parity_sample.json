@@ -1,0 +1,228 @@
+{
+  "source": "V13 very_short/very_low/2012-11-30, risk_scale=1.0",
+  "risk": "very_low",
+  "budget": 10000.0,
+  "candidates": [
+    {
+      "symbol": "VCIT",
+      "category": "etf",
+      "name": "Vanguard Intermediate-Term Corporate Bond ETF",
+      "economic_sleeve": "aggregate_bond",
+      "economic_subtype": "corporate_credit",
+      "market_score": 83.39,
+      "confidence": 1.0,
+      "activation": 1.0
+    },
+    {
+      "symbol": "TSLA",
+      "category": "stock",
+      "name": "Tesla",
+      "economic_sleeve": "single_equity",
+      "economic_subtype": "single_equity",
+      "market_score": 82.85,
+      "confidence": 1.0,
+      "activation": 1.0
+    },
+    {
+      "symbol": "COST",
+      "category": "stock",
+      "name": "Costco Wholesale",
+      "economic_sleeve": "single_equity",
+      "economic_subtype": "single_equity",
+      "market_score": 81.53,
+      "confidence": 1.0,
+      "activation": 1.0
+    },
+    {
+      "symbol": "VEA",
+      "category": "etf",
+      "name": "Vanguard FTSE Developed Markets ETF",
+      "economic_sleeve": "broad_equity",
+      "economic_subtype": "equity_developed_ex_us",
+      "market_score": 78.52,
+      "confidence": 1.0,
+      "activation": 1.0
+    },
+    {
+      "symbol": "BIL",
+      "category": "etf",
+      "name": "SPDR Bloomberg 1-3 Month T-Bill ETF",
+      "economic_sleeve": "cash_like",
+      "economic_subtype": "cash_like",
+      "market_score": 74.64,
+      "confidence": 1.0,
+      "activation": 0.9866666666666667
+    },
+    {
+      "symbol": "BND",
+      "category": "etf",
+      "name": "Vanguard Total Bond Market ETF",
+      "economic_sleeve": "aggregate_bond",
+      "economic_subtype": "aggregate_core",
+      "market_score": 74.24,
+      "confidence": 1.0,
+      "activation": 0.9718518518518516
+    },
+    {
+      "symbol": "VGIT",
+      "category": "etf",
+      "name": "Vanguard Intermediate-Term Treasury ETF",
+      "economic_sleeve": "government_bond",
+      "economic_subtype": "sovereign_intermediate",
+      "market_score": 73.75,
+      "confidence": 1.0,
+      "activation": 0.9537037037037037
+    },
+    {
+      "symbol": "VWO",
+      "category": "etf",
+      "name": "Vanguard FTSE Emerging Markets ETF",
+      "economic_sleeve": "broad_equity",
+      "economic_subtype": "equity_emerging",
+      "market_score": 73.21,
+      "confidence": 1.0,
+      "activation": 0.9337037037037035
+    },
+    {
+      "symbol": "VGSH",
+      "category": "etf",
+      "name": "Vanguard Short-Term Treasury ETF",
+      "economic_sleeve": "government_bond",
+      "economic_subtype": "sovereign_short",
+      "market_score": 72.32,
+      "confidence": 1.0,
+      "activation": 0.9007407407407405
+    },
+    {
+      "symbol": "VUG",
+      "category": "etf",
+      "name": "Vanguard Growth ETF",
+      "economic_sleeve": "sector_equity",
+      "economic_subtype": "equity_growth_concentrated",
+      "market_score": 70.27,
+      "confidence": 1.0,
+      "activation": 0.8248148148148147
+    },
+    {
+      "symbol": "VTI",
+      "category": "etf",
+      "name": "Vanguard Total Stock Market ETF",
+      "economic_sleeve": "broad_equity",
+      "economic_subtype": "equity_us_broad",
+      "market_score": 69.68,
+      "confidence": 1.0,
+      "activation": 0.8029629629629632
+    },
+    {
+      "symbol": "VB",
+      "category": "etf",
+      "name": "Vanguard Small-Cap ETF",
+      "economic_sleeve": "sector_equity",
+      "economic_subtype": "equity_small_cap",
+      "market_score": 68.53,
+      "confidence": 1.0,
+      "activation": 0.7603703703703704
+    },
+    {
+      "symbol": "DJP",
+      "category": "etf",
+      "name": "iPath Bloomberg Commodity Index Total Return ETN",
+      "economic_sleeve": "commodity",
+      "economic_subtype": "broad_commodity",
+      "market_score": 63.61,
+      "confidence": 1.0,
+      "activation": 0.5781481481481481
+    },
+    {
+      "symbol": "VGT",
+      "category": "etf",
+      "name": "Vanguard Information Technology ETF",
+      "economic_sleeve": "sector_equity",
+      "economic_subtype": "sector_equity",
+      "market_score": 60.04,
+      "confidence": 1.0,
+      "activation": 0.4459259259259259
+    },
+    {
+      "symbol": "XOM",
+      "category": "stock",
+      "name": "Exxon Mobil",
+      "economic_sleeve": "single_equity",
+      "economic_subtype": "single_equity",
+      "market_score": 59.91,
+      "confidence": 1.0,
+      "activation": 0.441111111111111
+    },
+    {
+      "symbol": "VGLT",
+      "category": "etf",
+      "name": "Vanguard Long-Term Treasury ETF",
+      "economic_sleeve": "government_bond",
+      "economic_subtype": "sovereign_long",
+      "market_score": 56.8,
+      "confidence": 1.0,
+      "activation": 0.32592592592592584
+    },
+    {
+      "symbol": "SGOL",
+      "category": "etf",
+      "name": "abrdn Physical Gold Shares ETF",
+      "economic_sleeve": "commodity",
+      "economic_subtype": "gold",
+      "market_score": 56.67,
+      "confidence": 1.0,
+      "activation": 0.3211111111111112
+    },
+    {
+      "symbol": "RWR",
+      "category": "etf",
+      "name": "SPDR Dow Jones REIT ETF",
+      "economic_sleeve": "sector_equity",
+      "economic_subtype": "real_estate",
+      "market_score": 52.45,
+      "confidence": 1.0,
+      "activation": 0.16481481481481491
+    },
+    {
+      "symbol": "UNH",
+      "category": "stock",
+      "name": "UnitedHealth Group",
+      "economic_sleeve": "single_equity",
+      "economic_subtype": "single_equity",
+      "market_score": 49.3,
+      "confidence": 1.0,
+      "activation": 0.048148148148148044
+    }
+  ],
+  "expected_sleeves": {
+    "aggregate_bond": 0.2004528750139203,
+    "broad_equity": 0.13363525000928023,
+    "cash_like": 0.36259697835851373,
+    "commodity": 0.01931524308004504,
+    "government_bond": 0.22303475753863666,
+    "sector_equity": 0.02755608349728398,
+    "single_equity": 0.03340881250232006
+  },
+  "expected_amounts": {
+    "VCIT": 1016.57,
+    "TSLA": 134.21,
+    "COST": 134.21,
+    "VEA": 488.31,
+    "BIL": 3625.96,
+    "BND": 987.95,
+    "VGIT": 975.56,
+    "VWO": 455.94,
+    "VGSH": 921.39,
+    "VUG": 103.5,
+    "VTI": 392.1,
+    "VB": 95.42,
+    "DJP": 124.18,
+    "VGT": 55.96,
+    "XOM": 59.2,
+    "VGLT": 333.39,
+    "SGOL": 68.97,
+    "RWR": 20.68,
+    "UNH": 6.46
+  },
+  "expected_projected_total_cents": 999996
+}

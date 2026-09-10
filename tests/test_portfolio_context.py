@@ -109,3 +109,20 @@ def test_runtime_wires_both_context_controls():
     assert "runtime_manager" in init_text
     assert "runtime_websocket" in init_text
     assert "investment-panel-runtime.js" in init_text
+
+
+def test_context_score_postprocessing_preserves_validated_market_score():
+    item = {
+        "score": 73.75,
+        "market_score": 73.75,
+        "confidence": 1.0,
+        "metrics": {
+            "market_score_risk_profile_invariant": True,
+            "signal_score_before_suitability": 62.16,
+            "concentration_penalty": 0.0,
+            "overlap_score_penalty": 0.0,
+        },
+    }
+    fields = context.context_score_fields(item)
+    assert fields["market_score"] == 73.75
+    assert fields["portfolio_context_adjustment"] == 0.0

@@ -122,7 +122,7 @@ CATEGORY_MAX_FRACTION_BY_RISK: dict[str, dict[str, float]] = {
     "very_high": {"crypto": 0.40, "stock": 0.85, "etf": 1.00, "fund": 1.00, "index": 0.85, "commodity": 0.40, "fx": 0.40, "other": 0.70},
 }
 
-INDICATION_METHOD = "risk_horizon_suitability_allocation_v7"
+INDICATION_METHOD = "v13_validated_risk_invariant_sleeve_blend"
 DISCOVERY_CATEGORY_WEIGHTS = {"etf": 4, "fund": 3, "stock": 3, "index": 2, "commodity": 2, "fx": 1, "crypto": 1, "other": 1}
 
 EU_DISCOVERY_REGIONS = frozenset({"germany", "eu_eea"})

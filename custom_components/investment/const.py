@@ -4,9 +4,9 @@ from __future__ import annotations
 DOMAIN = "investment"
 NAME = "HA Investment"
 VERSION = "0.4.0"
-PANEL_ASSET_REVISION = "0.4.0-r25"
+PANEL_ASSET_REVISION = "0.4.0-r36"
 PANEL_URL = "investment"
-PANEL_NAME = "investment-panel"
+PANEL_NAME = "investment-panel-r36"
 PANEL_TITLE = "Investments"
 PANEL_ICON = "mdi:chart-donut"
 STATIC_URL = "/api/investment/static"
@@ -31,6 +31,7 @@ DEFAULT_INCOGNITO_REVEAL_SECONDS = 5
 MAX_INCOGNITO_REVEAL_SECONDS = 300
 INDICATION_DISCLAIMER_VERSION = 2
 INDICATION_LEGAL_REGIONS = ("germany", "eu_eea", "uk", "switzerland", "us", "canada", "australia_nz", "other")
+INDICATION_WHOLE_UNIT_CATEGORIES = ("crypto", "etf", "stock", "fund", "index", "commodity", "fx", "other")
 DEFAULT_INDICATION_LEGAL_REGION = "other"
 SUPPORTED_PERIODS = ("1d", "7d", "1m", "3m", "1y", "5y")
 CATEGORIES = ("crypto", "etf", "stock", "fund", "index", "commodity", "fx", "other")
@@ -65,6 +66,9 @@ DEFAULT_INDICATION_PREFERENCES = {
     "min_confidence_pct": 45.0,
     "min_cash_reserve_pct": 0.0,
     "whole_units_only": False,
+    "whole_unit_categories": [],
+    "portfolio_context": "use",
+    "existing_instruments": "allow",
 }
 
 SIGNAL_ENTITY_EXPOSURE_CHANGED = f"{DOMAIN}_entity_exposure_changed"

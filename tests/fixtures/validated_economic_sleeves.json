@@ -1,0 +1,677 @@
+[
+  {
+    "universe": "V9",
+    "symbol": "SHV",
+    "provider_id": "SHV",
+    "name": "iShares 0-1 Year Treasury Bond ETF",
+    "category": "etf",
+    "expected_sleeve": "cash_like",
+    "expected_allocatable": true
+  },
+  {
+    "universe": "V9",
+    "symbol": "SHY",
+    "provider_id": "SHY",
+    "name": "iShares 1-3 Year Treasury Bond ETF",
+    "category": "etf",
+    "expected_sleeve": "government_bond",
+    "expected_allocatable": true
+  },
+  {
+    "universe": "V9",
+    "symbol": "IEF",
+    "provider_id": "IEF",
+    "name": "iShares 7-10 Year Treasury Bond ETF",
+    "category": "etf",
+    "expected_sleeve": "government_bond",
+    "expected_allocatable": true
+  },
+  {
+    "universe": "V9",
+    "symbol": "TLT",
+    "provider_id": "TLT",
+    "name": "iShares 20+ Year Treasury Bond ETF",
+    "category": "etf",
+    "expected_sleeve": "government_bond",
+    "expected_allocatable": true
+  },
+  {
+    "universe": "V9",
+    "symbol": "AGG",
+    "provider_id": "AGG",
+    "name": "iShares Core U.S. Aggregate Bond ETF",
+    "category": "etf",
+    "expected_sleeve": "aggregate_bond",
+    "expected_allocatable": true
+  },
+  {
+    "universe": "V9",
+    "symbol": "LQD",
+    "provider_id": "LQD",
+    "name": "iShares Investment Grade Corporate Bond ETF",
+    "category": "etf",
+    "expected_sleeve": "aggregate_bond",
+    "expected_allocatable": true
+  },
+  {
+    "universe": "V9",
+    "symbol": "HYG",
+    "provider_id": "HYG",
+    "name": "iShares High Yield Corporate Bond ETF",
+    "category": "etf",
+    "expected_sleeve": "aggregate_bond",
+    "expected_allocatable": true
+  },
+  {
+    "universe": "V9",
+    "symbol": "SPY",
+    "provider_id": "SPY",
+    "name": "SPDR S&P 500 ETF Trust",
+    "category": "etf",
+    "expected_sleeve": "broad_equity",
+    "expected_allocatable": true
+  },
+  {
+    "universe": "V9",
+    "symbol": "EFA",
+    "provider_id": "EFA",
+    "name": "iShares MSCI EAFE Developed Markets ETF",
+    "category": "etf",
+    "expected_sleeve": "broad_equity",
+    "expected_allocatable": true
+  },
+  {
+    "universe": "V9",
+    "symbol": "EEM",
+    "provider_id": "EEM",
+    "name": "iShares MSCI Emerging Markets ETF",
+    "category": "etf",
+    "expected_sleeve": "broad_equity",
+    "expected_allocatable": true
+  },
+  {
+    "universe": "V9",
+    "symbol": "IWM",
+    "provider_id": "IWM",
+    "name": "iShares Russell 2000 Small Cap ETF",
+    "category": "etf",
+    "expected_sleeve": "sector_equity",
+    "expected_allocatable": true
+  },
+  {
+    "universe": "V9",
+    "symbol": "QQQ",
+    "provider_id": "QQQ",
+    "name": "Invesco NASDAQ 100 ETF",
+    "category": "etf",
+    "expected_sleeve": "sector_equity",
+    "expected_allocatable": true
+  },
+  {
+    "universe": "V9",
+    "symbol": "XLK",
+    "provider_id": "XLK",
+    "name": "Technology Select Sector SPDR Fund",
+    "category": "etf",
+    "expected_sleeve": "sector_equity",
+    "expected_allocatable": true
+  },
+  {
+    "universe": "V9",
+    "symbol": "AAPL",
+    "provider_id": "AAPL",
+    "name": "Apple",
+    "category": "stock",
+    "expected_sleeve": "single_equity",
+    "expected_allocatable": true
+  },
+  {
+    "universe": "V9",
+    "symbol": "MSFT",
+    "provider_id": "MSFT",
+    "name": "Microsoft",
+    "category": "stock",
+    "expected_sleeve": "single_equity",
+    "expected_allocatable": true
+  },
+  {
+    "universe": "V9",
+    "symbol": "NVDA",
+    "provider_id": "NVDA",
+    "name": "NVIDIA",
+    "category": "stock",
+    "expected_sleeve": "single_equity",
+    "expected_allocatable": true
+  },
+  {
+    "universe": "V9",
+    "symbol": "BRK-B",
+    "provider_id": "BRK-B",
+    "name": "Berkshire Hathaway",
+    "category": "stock",
+    "expected_sleeve": "single_equity",
+    "expected_allocatable": true
+  },
+  {
+    "universe": "V9",
+    "symbol": "GLD",
+    "provider_id": "GLD",
+    "name": "SPDR Gold Shares ETF",
+    "category": "etf",
+    "expected_sleeve": "commodity",
+    "expected_allocatable": true
+  },
+  {
+    "universe": "V9",
+    "symbol": "DBC",
+    "provider_id": "DBC",
+    "name": "Invesco DB Commodity Index Tracking Fund",
+    "category": "etf",
+    "expected_sleeve": "commodity",
+    "expected_allocatable": true
+  },
+  {
+    "universe": "V9",
+    "symbol": "VNQ",
+    "provider_id": "VNQ",
+    "name": "Vanguard Real Estate ETF",
+    "category": "etf",
+    "expected_sleeve": "sector_equity",
+    "expected_allocatable": true
+  },
+  {
+    "universe": "V9",
+    "symbol": "BTC-USD",
+    "provider_id": "BTC-USD",
+    "name": "Bitcoin USD",
+    "category": "crypto",
+    "expected_sleeve": "crypto",
+    "expected_allocatable": true
+  },
+  {
+    "universe": "V9",
+    "symbol": "ETH-USD",
+    "provider_id": "ETH-USD",
+    "name": "Ethereum USD",
+    "category": "crypto",
+    "expected_sleeve": "crypto",
+    "expected_allocatable": true
+  },
+  {
+    "universe": "V9",
+    "symbol": "EURUSD=X",
+    "provider_id": "EURUSD=X",
+    "name": "EUR USD Exchange Rate",
+    "category": "fx",
+    "expected_sleeve": "nontradable",
+    "expected_allocatable": false
+  },
+  {
+    "universe": "V9",
+    "symbol": "^GSPC",
+    "provider_id": "^GSPC",
+    "name": "S&P 500 Index",
+    "category": "index",
+    "expected_sleeve": "nontradable",
+    "expected_allocatable": false
+  },
+  {
+    "universe": "V9",
+    "symbol": "GC=F",
+    "provider_id": "GC=F",
+    "name": "Gold Futures",
+    "category": "commodity",
+    "expected_sleeve": "nontradable",
+    "expected_allocatable": false
+  },
+  {
+    "universe": "V12",
+    "symbol": "MINT",
+    "provider_id": "MINT",
+    "name": "PIMCO Enhanced Short Maturity Active ETF",
+    "category": "etf",
+    "expected_sleeve": "cash_like",
+    "expected_allocatable": true
+  },
+  {
+    "universe": "V12",
+    "symbol": "SPTS",
+    "provider_id": "SPTS",
+    "name": "State Street SPDR Portfolio Short Term Treasury ETF",
+    "category": "etf",
+    "expected_sleeve": "government_bond",
+    "expected_allocatable": true
+  },
+  {
+    "universe": "V12",
+    "symbol": "SPTI",
+    "provider_id": "SPTI",
+    "name": "State Street SPDR Portfolio Intermediate Term Treasury ETF",
+    "category": "etf",
+    "expected_sleeve": "government_bond",
+    "expected_allocatable": true
+  },
+  {
+    "universe": "V12",
+    "symbol": "SPTL",
+    "provider_id": "SPTL",
+    "name": "State Street SPDR Portfolio Long Term Treasury ETF",
+    "category": "etf",
+    "expected_sleeve": "government_bond",
+    "expected_allocatable": true
+  },
+  {
+    "universe": "V12",
+    "symbol": "SPAB",
+    "provider_id": "SPAB",
+    "name": "State Street SPDR Portfolio Aggregate Bond ETF",
+    "category": "etf",
+    "expected_sleeve": "aggregate_bond",
+    "expected_allocatable": true
+  },
+  {
+    "universe": "V12",
+    "symbol": "SPIB",
+    "provider_id": "SPIB",
+    "name": "State Street SPDR Portfolio Intermediate Term Corporate Bond ETF",
+    "category": "etf",
+    "expected_sleeve": "aggregate_bond",
+    "expected_allocatable": true
+  },
+  {
+    "universe": "V12",
+    "symbol": "JNK",
+    "provider_id": "JNK",
+    "name": "State Street SPDR Bloomberg High Yield Bond ETF",
+    "category": "etf",
+    "expected_sleeve": "aggregate_bond",
+    "expected_allocatable": true
+  },
+  {
+    "universe": "V12",
+    "symbol": "SPTM",
+    "provider_id": "SPTM",
+    "name": "State Street SPDR Portfolio S&P 1500 Composite Stock Market ETF",
+    "category": "etf",
+    "expected_sleeve": "broad_equity",
+    "expected_allocatable": true
+  },
+  {
+    "universe": "V12",
+    "symbol": "SPDW",
+    "provider_id": "SPDW",
+    "name": "State Street SPDR Portfolio Developed World ex-US ETF",
+    "category": "etf",
+    "expected_sleeve": "broad_equity",
+    "expected_allocatable": true
+  },
+  {
+    "universe": "V12",
+    "symbol": "SPEM",
+    "provider_id": "SPEM",
+    "name": "State Street SPDR Portfolio Emerging Markets ETF",
+    "category": "etf",
+    "expected_sleeve": "broad_equity",
+    "expected_allocatable": true
+  },
+  {
+    "universe": "V12",
+    "symbol": "SPSM",
+    "provider_id": "SPSM",
+    "name": "State Street SPDR Portfolio S&P 600 Small Cap ETF",
+    "category": "etf",
+    "expected_sleeve": "sector_equity",
+    "expected_allocatable": true
+  },
+  {
+    "universe": "V12",
+    "symbol": "SPYG",
+    "provider_id": "SPYG",
+    "name": "State Street SPDR Portfolio S&P 500 Growth ETF",
+    "category": "etf",
+    "expected_sleeve": "sector_equity",
+    "expected_allocatable": true
+  },
+  {
+    "universe": "V12",
+    "symbol": "IYW",
+    "provider_id": "IYW",
+    "name": "iShares U.S. Technology ETF",
+    "category": "etf",
+    "expected_sleeve": "sector_equity",
+    "expected_allocatable": true
+  },
+  {
+    "universe": "V12",
+    "symbol": "IYR",
+    "provider_id": "IYR",
+    "name": "iShares U.S. Real Estate ETF",
+    "category": "etf",
+    "expected_sleeve": "sector_equity",
+    "expected_allocatable": true
+  },
+  {
+    "universe": "V12",
+    "symbol": "GOOGL",
+    "provider_id": "GOOGL",
+    "name": "Alphabet Class A",
+    "category": "stock",
+    "expected_sleeve": "single_equity",
+    "expected_allocatable": true
+  },
+  {
+    "universe": "V12",
+    "symbol": "AMZN",
+    "provider_id": "AMZN",
+    "name": "Amazon",
+    "category": "stock",
+    "expected_sleeve": "single_equity",
+    "expected_allocatable": true
+  },
+  {
+    "universe": "V12",
+    "symbol": "META",
+    "provider_id": "META",
+    "name": "Meta Platforms",
+    "category": "stock",
+    "expected_sleeve": "single_equity",
+    "expected_allocatable": true
+  },
+  {
+    "universe": "V12",
+    "symbol": "JPM",
+    "provider_id": "JPM",
+    "name": "JPMorgan Chase",
+    "category": "stock",
+    "expected_sleeve": "single_equity",
+    "expected_allocatable": true
+  },
+  {
+    "universe": "V12",
+    "symbol": "IAU",
+    "provider_id": "IAU",
+    "name": "iShares Gold Trust",
+    "category": "etf",
+    "expected_sleeve": "commodity",
+    "expected_allocatable": true
+  },
+  {
+    "universe": "V12",
+    "symbol": "GSG",
+    "provider_id": "GSG",
+    "name": "iShares S&P GSCI Commodity-Indexed Trust",
+    "category": "etf",
+    "expected_sleeve": "commodity",
+    "expected_allocatable": true
+  },
+  {
+    "universe": "V12",
+    "symbol": "LTC-USD",
+    "provider_id": "LTC-USD",
+    "name": "Litecoin USD",
+    "category": "crypto",
+    "expected_sleeve": "crypto",
+    "expected_allocatable": true
+  },
+  {
+    "universe": "V12",
+    "symbol": "XRP-USD",
+    "provider_id": "XRP-USD",
+    "name": "XRP USD",
+    "category": "crypto",
+    "expected_sleeve": "crypto",
+    "expected_allocatable": true
+  },
+  {
+    "universe": "V12",
+    "symbol": "GBPUSD=X",
+    "provider_id": "GBPUSD=X",
+    "name": "GBP USD Exchange Rate",
+    "category": "fx",
+    "expected_sleeve": "nontradable",
+    "expected_allocatable": false
+  },
+  {
+    "universe": "V12",
+    "symbol": "^DJI",
+    "provider_id": "^DJI",
+    "name": "Dow Jones Industrial Average Index",
+    "category": "index",
+    "expected_sleeve": "nontradable",
+    "expected_allocatable": false
+  },
+  {
+    "universe": "V12",
+    "symbol": "CL=F",
+    "provider_id": "CL=F",
+    "name": "Crude Oil Futures",
+    "category": "commodity",
+    "expected_sleeve": "nontradable",
+    "expected_allocatable": false
+  },
+  {
+    "universe": "V13",
+    "symbol": "BIL",
+    "provider_id": "BIL",
+    "name": "SPDR Bloomberg 1-3 Month T-Bill ETF",
+    "category": "etf",
+    "expected_sleeve": "cash_like",
+    "expected_allocatable": true
+  },
+  {
+    "universe": "V13",
+    "symbol": "VGSH",
+    "provider_id": "VGSH",
+    "name": "Vanguard Short-Term Treasury ETF",
+    "category": "etf",
+    "expected_sleeve": "government_bond",
+    "expected_allocatable": true
+  },
+  {
+    "universe": "V13",
+    "symbol": "VGIT",
+    "provider_id": "VGIT",
+    "name": "Vanguard Intermediate-Term Treasury ETF",
+    "category": "etf",
+    "expected_sleeve": "government_bond",
+    "expected_allocatable": true
+  },
+  {
+    "universe": "V13",
+    "symbol": "VGLT",
+    "provider_id": "VGLT",
+    "name": "Vanguard Long-Term Treasury ETF",
+    "category": "etf",
+    "expected_sleeve": "government_bond",
+    "expected_allocatable": true
+  },
+  {
+    "universe": "V13",
+    "symbol": "BND",
+    "provider_id": "BND",
+    "name": "Vanguard Total Bond Market ETF",
+    "category": "etf",
+    "expected_sleeve": "aggregate_bond",
+    "expected_allocatable": true
+  },
+  {
+    "universe": "V13",
+    "symbol": "VCIT",
+    "provider_id": "VCIT",
+    "name": "Vanguard Intermediate-Term Corporate Bond ETF",
+    "category": "etf",
+    "expected_sleeve": "aggregate_bond",
+    "expected_allocatable": true
+  },
+  {
+    "universe": "V13",
+    "symbol": "SJNK",
+    "provider_id": "SJNK",
+    "name": "SPDR Bloomberg Short Term High Yield Bond ETF",
+    "category": "etf",
+    "expected_sleeve": "aggregate_bond",
+    "expected_allocatable": true
+  },
+  {
+    "universe": "V13",
+    "symbol": "VTI",
+    "provider_id": "VTI",
+    "name": "Vanguard Total Stock Market ETF",
+    "category": "etf",
+    "expected_sleeve": "broad_equity",
+    "expected_allocatable": true
+  },
+  {
+    "universe": "V13",
+    "symbol": "VEA",
+    "provider_id": "VEA",
+    "name": "Vanguard FTSE Developed Markets ETF",
+    "category": "etf",
+    "expected_sleeve": "broad_equity",
+    "expected_allocatable": true
+  },
+  {
+    "universe": "V13",
+    "symbol": "VWO",
+    "provider_id": "VWO",
+    "name": "Vanguard FTSE Emerging Markets ETF",
+    "category": "etf",
+    "expected_sleeve": "broad_equity",
+    "expected_allocatable": true
+  },
+  {
+    "universe": "V13",
+    "symbol": "VB",
+    "provider_id": "VB",
+    "name": "Vanguard Small-Cap ETF",
+    "category": "etf",
+    "expected_sleeve": "sector_equity",
+    "expected_allocatable": true
+  },
+  {
+    "universe": "V13",
+    "symbol": "VUG",
+    "provider_id": "VUG",
+    "name": "Vanguard Growth ETF",
+    "category": "etf",
+    "expected_sleeve": "sector_equity",
+    "expected_allocatable": true
+  },
+  {
+    "universe": "V13",
+    "symbol": "VGT",
+    "provider_id": "VGT",
+    "name": "Vanguard Information Technology ETF",
+    "category": "etf",
+    "expected_sleeve": "sector_equity",
+    "expected_allocatable": true
+  },
+  {
+    "universe": "V13",
+    "symbol": "RWR",
+    "provider_id": "RWR",
+    "name": "SPDR Dow Jones REIT ETF",
+    "category": "etf",
+    "expected_sleeve": "sector_equity",
+    "expected_allocatable": true
+  },
+  {
+    "universe": "V13",
+    "symbol": "COST",
+    "provider_id": "COST",
+    "name": "Costco Wholesale",
+    "category": "stock",
+    "expected_sleeve": "single_equity",
+    "expected_allocatable": true
+  },
+  {
+    "universe": "V13",
+    "symbol": "UNH",
+    "provider_id": "UNH",
+    "name": "UnitedHealth Group",
+    "category": "stock",
+    "expected_sleeve": "single_equity",
+    "expected_allocatable": true
+  },
+  {
+    "universe": "V13",
+    "symbol": "XOM",
+    "provider_id": "XOM",
+    "name": "Exxon Mobil",
+    "category": "stock",
+    "expected_sleeve": "single_equity",
+    "expected_allocatable": true
+  },
+  {
+    "universe": "V13",
+    "symbol": "TSLA",
+    "provider_id": "TSLA",
+    "name": "Tesla",
+    "category": "stock",
+    "expected_sleeve": "single_equity",
+    "expected_allocatable": true
+  },
+  {
+    "universe": "V13",
+    "symbol": "SGOL",
+    "provider_id": "SGOL",
+    "name": "abrdn Physical Gold Shares ETF",
+    "category": "etf",
+    "expected_sleeve": "commodity",
+    "expected_allocatable": true
+  },
+  {
+    "universe": "V13",
+    "symbol": "DJP",
+    "provider_id": "DJP",
+    "name": "iPath Bloomberg Commodity Index Total Return ETN",
+    "category": "etf",
+    "expected_sleeve": "commodity",
+    "expected_allocatable": true
+  },
+  {
+    "universe": "V13",
+    "symbol": "BCH-USD",
+    "provider_id": "BCH-USD",
+    "name": "Bitcoin Cash",
+    "category": "crypto",
+    "expected_sleeve": "crypto",
+    "expected_allocatable": true
+  },
+  {
+    "universe": "V13",
+    "symbol": "ADA-USD",
+    "provider_id": "ADA-USD",
+    "name": "Cardano",
+    "category": "crypto",
+    "expected_sleeve": "crypto",
+    "expected_allocatable": true
+  },
+  {
+    "universe": "V13",
+    "symbol": "AUDUSD=X",
+    "provider_id": "AUDUSD=X",
+    "name": "AUD/USD FX reference",
+    "category": "currency",
+    "expected_sleeve": "nontradable",
+    "expected_allocatable": false
+  },
+  {
+    "universe": "V13",
+    "symbol": "^IXIC",
+    "provider_id": "^IXIC",
+    "name": "NASDAQ Composite benchmark",
+    "category": "benchmark",
+    "expected_sleeve": "nontradable",
+    "expected_allocatable": false
+  },
+  {
+    "universe": "V13",
+    "symbol": "SI=F",
+    "provider_id": "SI=F",
+    "name": "Silver futures reference",
+    "category": "commodity_future",
+    "expected_sleeve": "nontradable",
+    "expected_allocatable": false
+  }
+]

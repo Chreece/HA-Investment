@@ -7,7 +7,17 @@ from collections.abc import Sequence
 from .base import MarketProvider, ProviderError
 from ..models import HistoryPoint, Quote, SearchResult
 
-_HORIZON_DAYS = {"1d": 7, "7d": 14, "1m": 35, "3m": 100, "1y": 380, "5y": 5 * 370}
+_HORIZON_DAYS = {
+    "1d": 7,
+    "7d": 14,
+    "1m": 35,
+    "3m": 100,
+    "1y": 380,
+    "5y": 5 * 370,
+    # Internal portfolio-risk feed: V10's contract is weekly, so keep weekly FX
+    # observations instead of the coarser 5-year chart grouping.
+    "5y_risk": 5 * 370,
+}
 
 
 class FrankfurterProvider(MarketProvider):
@@ -142,8 +152,8 @@ class FrankfurterProvider(MarketProvider):
         days = _HORIZON_DAYS.get(period, 35)
         start = date.today() - timedelta(days=days)
         params = {"base": base, "quotes": quote, "from": start.isoformat()}
-        if period in {"1y", "5y"}:
-            params["group"] = "week" if period == "1y" else "month"
+        if period in {"1y", "5y", "5y_risk"}:
+            params["group"] = "week" if period in {"1y", "5y_risk"} else "month"
         rows = await self._get("rates", **params)
         points: list[HistoryPoint] = []
         if isinstance(rows, list):

@@ -9,7 +9,7 @@ import re
 import time
 from collections import defaultdict
 from copy import deepcopy
-from typing import Any
+from typing import Any, Callable
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
@@ -39,6 +39,7 @@ from .const import (
     EXPOSABLE_ENTITY_METRICS,
     INDICATION_DISCLAIMER_VERSION,
     INDICATION_LEGAL_REGIONS,
+    INDICATION_WHOLE_UNIT_CATEGORIES,
     MAX_INCOGNITO_REVEAL_SECONDS,
     SIGNAL_ENTITY_EXPOSURE_CHANGED,
     SUPPORTED_UI_LANGUAGES,
@@ -47,12 +48,10 @@ from .const import (
 from .indication import (
     DIVERSIFICATION_DEFAULT_MAX_FRACTION,
     INDICATION_METHOD,
-    allocate_budget,
     analyze_prices,
     attach_relative_strength,
     balanced_discovery_sample,
     candidate_region_compatible,
-    sanitize_ai_ranking,
 )
 from .ledger import (
     fifo_summary,
@@ -77,6 +76,20 @@ from .providers import (
 )
 from .providers.base import quote_currency_matches
 from .storage import InvestmentStore
+from .validated_model import (
+    ECONOMIC_SLEEVE_CAPS,
+    PORTFOLIO_VOL_TARGET,
+    PORTFOLIO_WEEKLY_ES95_TARGET,
+    SIGNAL_SCAFFOLD_RISK,
+    VALIDATED_SIGNAL_STRATEGY,
+    apply_downward_weight_constraints,
+    clamp_ai_ranking_to_deterministic,
+    classify_economic_exposure,
+    prepare_scored_candidate,
+    production_projection,
+    validated_exact_weights,
+    weekly_return_map_from_points,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -156,6 +169,7 @@ class InvestmentManager:
         }
         self._cache = TTLCache()
         self._network_sem = asyncio.Semaphore(6)
+        self._fx_history_locks: dict[tuple[str, str, str], asyncio.Lock] = {}
 
     async def async_initialize(self) -> None:
         await self.store.async_load()
@@ -864,6 +878,10 @@ class InvestmentManager:
             raise ValueError("Unsupported portfolio overlap policy")
         if values["diversification"] not in {"low", "medium", "high"}:
             raise ValueError("Unsupported diversification preference")
+        if values["portfolio_context"] not in {"use", "ignore"}:
+            raise ValueError("Unsupported portfolio context mode")
+        if values["existing_instruments"] not in {"allow", "exclude"}:
+            raise ValueError("Unsupported existing-instrument policy")
         category = values.get("category")
         if category is None or category == "":
             values["category"] = None
@@ -895,6 +913,21 @@ class InvestmentManager:
                 raise ValueError("Maximum candidate allocation must be greater than zero and at most 100")
             values["max_candidate_pct"] = cap
         values["whole_units_only"] = bool(values.get("whole_units_only", False))
+        raw_whole_categories = values.get("whole_unit_categories") or []
+        if isinstance(raw_whole_categories, str):
+            raw_whole_categories = [raw_whole_categories]
+        if not isinstance(raw_whole_categories, (list, tuple, set)):
+            raise ValueError("Whole-unit categories must be a list")
+        whole_categories: list[str] = []
+        for raw_category in raw_whole_categories:
+            whole_category = str(raw_category or "").strip().lower()
+            if whole_category not in INDICATION_WHOLE_UNIT_CATEGORIES:
+                raise ValueError("Unsupported whole-unit investment category")
+            if whole_category not in whole_categories:
+                whole_categories.append(whole_category)
+        if values["whole_units_only"]:
+            whole_categories = list(INDICATION_WHOLE_UNIT_CATEGORIES)
+        values["whole_unit_categories"] = whole_categories
         return values
 
     async def async_set_preferences(
@@ -1759,6 +1792,41 @@ class InvestmentManager:
         return result
 
     @staticmethod
+    def _economic_classification_metadata(
+        asset: dict[str, Any], classification: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Return explanatory classification/structure metadata only.
+
+        These fields do not alter the frozen V13/V12c score, activation, sleeve
+        caps, or portfolio-risk mathematics.
+        """
+        category = str(asset.get("category") or "other").strip().lower()
+        symbol = str(asset.get("symbol") or asset.get("provider_id") or "").strip().upper()
+        name = str(asset.get("name") or "").strip().upper()
+        sleeve = str(classification.get("economic_sleeve") or "unknown")
+        if sleeve == "unknown":
+            confidence, basis = 0.0, "unknown_exposure"
+        elif sleeve == "nontradable" or category in {"crypto", "stock", "commodity", "fx", "index"}:
+            confidence, basis = 1.0, "direct_product_type"
+        elif symbol in {"QQQ", "VFIAX", "FXAIX"}:
+            confidence, basis = 1.0, "known_wrapper_identity"
+        else:
+            confidence, basis = 0.90, "product_name_taxonomy"
+        flags: list[str] = []
+        if "SWAP" in name:
+            flags.append("swap_based_structure")
+        if "HEDGED" in name:
+            flags.append("currency_hedged_structure")
+        padded = f" {name} "
+        if any(term in padded for term in (" LEVERAGED ", " INVERSE ", " 2X ", " 3X ", " DAILY SHORT ")):
+            flags.append("leveraged_or_inverse_structure")
+        return {
+            "economic_classification_confidence": confidence,
+            "economic_classification_basis": basis,
+            "product_structure_flags": flags,
+        }
+
+    @staticmethod
     def _candidate_key(asset: dict[str, Any]) -> tuple[str, str]:
         return str(asset.get("provider") or ""), str(asset.get("provider_id") or "")
 
@@ -1796,6 +1864,156 @@ class InvestmentManager:
                 return parsed
         return None
 
+    @staticmethod
+    def _ai_ranking_usable(
+        ranking: Any, results: list[dict[str, Any]]
+    ) -> bool:
+        """Return whether an AI ranking contains at least one known candidate."""
+        if not isinstance(ranking, list):
+            return False
+        known = {
+            (str(item.get("provider") or ""), str(item.get("provider_id") or ""))
+            for item in results
+        }
+        return any(
+            isinstance(row, dict)
+            and (str(row.get("provider") or ""), str(row.get("provider_id") or "")) in known
+            for row in ranking
+        )
+
+    @staticmethod
+    def _deterministic_ai_fallback(
+        results: list[dict[str, Any]], allocation: dict[str, Any] | None
+    ) -> dict[str, Any] | None:
+        """Mirror the validated deterministic allocation when AI output is unusable."""
+        for item in results:
+            amount = item.get("suggested_amount")
+            units = item.get("suggested_units")
+            item["ai_score"] = None
+            item["ai_action"] = "consider" if float(amount or 0.0) > 0 else "watch"
+            item["ai_reason"] = ""
+            item["ai_suggested_amount"] = amount
+            item["ai_suggested_units"] = units
+        if allocation is None:
+            return None
+        mirrored = deepcopy(allocation)
+        mirrored["fallback_to_deterministic"] = True
+        mirrored["fallback_reason"] = "unusable_ai_ranking"
+        return mirrored
+
+    @staticmethod
+    def _ai_language_name(language: str) -> str:
+        code = str(language or "en").strip().lower().replace("_", "-").split("-", 1)[0]
+        return {
+            "en": "English", "de": "German", "el": "Greek", "fr": "French",
+            "es": "Spanish", "it": "Italian", "pt": "Portuguese", "nl": "Dutch",
+            "pl": "Polish", "tr": "Turkish", "ru": "Russian", "uk": "Ukrainian",
+            "bg": "Bulgarian", "cs": "Czech", "sk": "Slovak", "hu": "Hungarian",
+            "ro": "Romanian", "sv": "Swedish", "da": "Danish", "fi": "Finnish",
+            "no": "Norwegian", "ar": "Arabic", "he": "Hebrew", "hi": "Hindi",
+            "id": "Indonesian", "ja": "Japanese", "ko": "Korean", "zh": "Chinese",
+        }.get(code, code or "English")
+
+    @staticmethod
+    def _ai_human_text(parsed: Any, raw_text: str) -> str:
+        if not isinstance(parsed, dict):
+            return str(raw_text or "")
+        parts: list[str] = []
+        def visit(value: Any, key: str = "") -> None:
+            if isinstance(value, dict):
+                for child_key, child in value.items():
+                    visit(child, str(child_key))
+            elif isinstance(value, list):
+                for child in value:
+                    visit(child, key)
+            elif isinstance(value, str) and key not in {
+                "provider", "provider_id", "symbol", "action", "verdict"
+            }:
+                parts.append(value)
+        visit(parsed)
+        return " ".join(parts) or str(raw_text or "")
+
+    @classmethod
+    def _ai_language_matches(cls, parsed: Any, raw_text: str, language: str) -> bool:
+        """Best-effort guard so obviously English output is not shown in another UI language."""
+        code = str(language or "en").strip().lower().replace("_", "-").split("-", 1)[0]
+        if code in {"", "en"}:
+            return True
+        text = cls._ai_human_text(parsed, raw_text)
+        if not text.strip():
+            return True
+        scripts = {
+            "el": r"[\u0370-\u03ff]", "ru": r"[\u0400-\u04ff]", "uk": r"[\u0400-\u04ff]",
+            "bg": r"[\u0400-\u04ff]", "ar": r"[\u0600-\u06ff]", "he": r"[\u0590-\u05ff]",
+            "hi": r"[\u0900-\u097f]", "ja": r"[\u3040-\u30ff\u4e00-\u9fff]",
+            "ko": r"[\uac00-\ud7af]", "zh": r"[\u4e00-\u9fff]",
+        }
+        if code in scripts:
+            return bool(re.search(scripts[code], text))
+        words = re.findall(r"[A-Za-zÀ-ž]+", text.lower())
+        if len(words) < 8:
+            return True
+        english = {"the", "and", "with", "this", "that", "for", "from", "risk", "portfolio", "investment", "based", "recommend", "summary", "candidate", "current", "data"}
+        target = {
+            "de": {"und", "der", "die", "das", "mit", "für", "risiko", "portfolio", "anlage", "daten"},
+            "fr": {"et", "le", "la", "les", "avec", "pour", "risque", "portefeuille", "investissement", "données"},
+            "es": {"y", "el", "la", "los", "con", "para", "riesgo", "cartera", "inversión", "datos"},
+            "it": {"e", "il", "la", "con", "per", "rischio", "portafoglio", "investimento", "dati"},
+            "pt": {"e", "o", "a", "com", "para", "risco", "carteira", "investimento", "dados"},
+            "nl": {"en", "de", "het", "met", "voor", "risico", "portefeuille", "belegging", "gegevens"},
+            "pl": {"i", "z", "dla", "ryzyko", "portfel", "inwestycja", "dane", "jest"},
+            "tr": {"ve", "ile", "için", "risk", "portföy", "yatırım", "veri", "öneri"},
+            "ro": {"și", "cu", "pentru", "risc", "portofoliu", "investiție", "date"},
+            "sv": {"och", "med", "för", "risk", "portfölj", "investering", "data"},
+            "da": {"og", "med", "for", "risiko", "portefølje", "investering", "data"},
+            "fi": {"ja", "kanssa", "riski", "salkku", "sijoitus", "tiedot"},
+            "no": {"og", "med", "for", "risiko", "portefølje", "investering", "data"},
+            "cs": {"a", "s", "pro", "riziko", "portfolio", "investice", "data"},
+            "sk": {"a", "s", "pre", "riziko", "portfólio", "investícia", "údaje"},
+            "hu": {"és", "a", "az", "kockázat", "portfólió", "befektetés", "adat"},
+            "id": {"dan", "dengan", "untuk", "risiko", "portofolio", "investasi", "data"},
+        }.get(code, set())
+        english_hits = sum(word in english for word in words)
+        target_hits = sum(word in target for word in words)
+        return not (english_hits >= 5 and target_hits <= 1)
+
+    async def _retry_ai_language(
+        self,
+        user_id: str,
+        *,
+        ai_task_entity_id: str | None,
+        language: str,
+        original_text: str,
+    ) -> tuple[str, Any]:
+        """Ask the same local AI Task for a faithful language-only rewrite once."""
+        from homeassistant.core import Context
+
+        code = str(language or "en").strip().lower().replace("_", "-").split("-", 1)[0]
+        name = self._ai_language_name(code)
+        prompt = (
+            f"Translate or rewrite the following AI response into {name} ({code}). "
+            "Preserve every symbol, number, currency, action and factual conclusion. "
+            "Do not add analysis or new facts. If the input is JSON, keep exactly the same JSON keys "
+            "and structure and translate only human-readable string values. Otherwise return readable Markdown. "
+            f"OUTPUT MUST BE IN {name.upper()}.\nORIGINAL_RESPONSE={str(original_text or '')[:7000]}"
+        )
+        service_data: dict[str, Any] = {
+            "task_name": "HA Investment response language normalization",
+            "instructions": prompt,
+        }
+        selected = str(ai_task_entity_id or "").strip()
+        if selected:
+            service_data["entity_id"] = selected
+        response = await self.hass.services.async_call(
+            "ai_task", "generate_data", service_data, blocking=True, return_response=True,
+            context=Context(user_id=user_id),
+        )
+        generated = (response or {}).get("data") if isinstance(response, dict) else None
+        if isinstance(generated, dict):
+            return json.dumps(generated, ensure_ascii=False), generated
+        text = str(generated or "").strip()
+        return text, self._json_from_ai_text(text)
+
     async def _ai_indication_review(
         self,
         user_id: str,
@@ -1814,6 +2032,7 @@ class InvestmentManager:
         min_confidence_pct: float,
         min_cash_reserve_pct: float,
         whole_units_only: bool,
+        whole_unit_categories: list[str] | None,
         results: list[dict[str, Any]],
     ) -> dict[str, Any]:
         """Ask Home Assistant AI Task to review/rank supplied deterministic data.
@@ -1841,6 +2060,11 @@ class InvestmentManager:
                     "portfolio_price": item.get("portfolio_price"),
                     "deterministic_score": item.get("score"),
                     "confidence": item.get("confidence"),
+                    "economic_sleeve": item.get("economic_sleeve"),
+                    "economic_sleeve_cap": item.get("economic_sleeve_cap"),
+                    "activation": item.get("activation"),
+                    "deterministic_suggested_amount": item.get("suggested_amount"),
+                    "deterministic_suggested_units": item.get("suggested_units"),
                     "metrics": item.get("metrics"),
                     "portfolio_overlap": item.get("portfolio_overlap"),
                     "portfolio_overlap_known": item.get("portfolio_overlap_known"),
@@ -1855,7 +2079,8 @@ class InvestmentManager:
             f"risk={risk_tolerance}; intended_holding_period={horizon}; strategy={strategy}; "
             f"overlap_policy={overlap_policy}; diversification={diversification}; "
             f"max_per_candidate={max_candidate_text}; minimum_confidence={min_confidence_pct:.2f}%; "
-            f"minimum_cash_reserve={min_cash_reserve_pct:.2f}%; whole_units_only={bool(whole_units_only)}"
+            f"minimum_cash_reserve={min_cash_reserve_pct:.2f}%; whole_units_only={bool(whole_units_only)}; "
+            f"whole_unit_categories={list(whole_unit_categories or [])}"
         )
         if mode == "deterministic_ai":
             task = (
@@ -1871,11 +2096,20 @@ class InvestmentManager:
                 "You are the full-AI ranking layer of an investment indication. Rank only the supplied candidates "
                 "using their supplied market metrics, portfolio exposure and overlap evidence, while respecting the "
                 "user preferences. Do not invent news, fundamentals, financial statements, forecasts or candidates. "
+                "A suggested_amount may only reduce the supplied deterministic_suggested_amount for that same "
+                "candidate; never exceed it, and never mark a zero-allocation candidate as consider. "
                 "Return JSON only with keys summary and ranking. ranking is an array with provider, provider_id, "
                 "score (0-100), action (consider|watch|avoid), suggested_amount (number or null), and reason."
             )
+        response_language = str(language or "en").strip() or "en"
+        response_language_name = self._ai_language_name(response_language)
         prompt = (
-            f"{task}\nUSER_PREFERENCES={preferences}.\n"
+            f"{task}\nThe user interface language is {response_language_name} ({response_language}). "
+            f"Respond in the user's UI language: {response_language_name}. "
+            f"ALL natural-language output MUST be in {response_language_name}. "
+            "Keep JSON keys exactly as requested, but write every human-readable string value in the user language. "
+            "A response written mainly in another language is invalid.\n"
+            f"USER_PREFERENCES={preferences}.\n"
             f"Portfolio budget: {amount if amount is not None else 'not supplied'}; "
             f"category filter: {category or 'any'}.\nCANDIDATES={data_json}"
         )
@@ -1903,9 +2137,42 @@ class InvestmentManager:
         else:
             text = str(generated or "").strip()
             parsed = self._json_from_ai_text(text)
+
+        language_retry_used = False
+        language_mismatch = not self._ai_language_matches(parsed, text, response_language)
+        if language_mismatch and str(response_language).lower().split("-", 1)[0] != "en":
+            language_retry_used = True
+            try:
+                translated_text, translated_parsed = await self._retry_ai_language(
+                    user_id,
+                    ai_task_entity_id=selected or None,
+                    language=response_language,
+                    original_text=text,
+                )
+                if self._ai_language_matches(translated_parsed, translated_text, response_language):
+                    text, parsed = translated_text, translated_parsed
+                    language_mismatch = False
+            except Exception as err:
+                _LOGGER.debug("AI response language normalization failed: %s", err)
+
+        if mode == "deterministic_ai" and not isinstance(parsed, dict):
+            # Some HA AI Task providers return explanatory prose even when asked
+            # for JSON-only output. Deterministic+AI remains allocation-neutral.
+            parsed = {
+                "verdict": "caution",
+                "summary": "" if language_mismatch else text[:1200],
+                "notes": [],
+            }
+        display_structured = None if language_mismatch else parsed
+        display_text = "" if language_mismatch else text
         return {
             "text": text,
             "structured": parsed,
+            "display_text": display_text,
+            "display_structured": display_structured,
+            "response_language": response_language,
+            "language_retry_used": language_retry_used,
+            "language_mismatch": language_mismatch,
             "entity_id": selected or None,
             "uses_preferred_entity": not bool(selected),
         }
@@ -2118,8 +2385,27 @@ class InvestmentManager:
         min_confidence_pct: float = 45.0,
         min_cash_reserve_pct: float = 0.0,
         whole_units_only: bool = False,
+        whole_unit_categories: list[str] | None = None,
+        portfolio_context: str = "use",
+        existing_instruments: str = "allow",
+        response_language: str | None = None,
+        progress_callback: Callable[[int, str, dict[str, Any] | None], None] | None = None,
     ) -> dict[str, Any]:
         """Rank candidate buys using explicit horizon/risk/overlap preferences."""
+
+        def emit_progress(percent: int, stage: str, **detail: Any) -> None:
+            if progress_callback is None:
+                return
+            try:
+                progress_callback(
+                    max(0, min(99, int(percent))),
+                    str(stage),
+                    detail or None,
+                )
+            except Exception as err:  # Progress UI must never affect analysis.
+                _LOGGER.debug("Investment indication progress callback failed: %s", err)
+
+        emit_progress(5, "starting")
         if mode not in {"deterministic", "deterministic_ai", "full_ai"}:
             raise ValueError("Unsupported indication mode")
         if scope is None:
@@ -2136,6 +2422,22 @@ class InvestmentManager:
             raise ValueError("Unsupported portfolio overlap policy")
         if diversification not in {"low", "medium", "high"}:
             raise ValueError("Unsupported diversification preference")
+        portfolio_context = str(portfolio_context or "use").strip().lower()
+        existing_instruments = str(existing_instruments or "allow").strip().lower()
+        if portfolio_context not in {"use", "ignore"}:
+            raise ValueError("Unsupported portfolio context mode")
+        if existing_instruments not in {"allow", "exclude"}:
+            raise ValueError("Unsupported existing-instrument policy")
+        normalized_whole_categories: list[str] = []
+        for raw_whole_category in whole_unit_categories or []:
+            whole_category = str(raw_whole_category or "").strip().lower()
+            if whole_category not in INDICATION_WHOLE_UNIT_CATEGORIES:
+                raise ValueError("Unsupported whole-unit investment category")
+            if whole_category not in normalized_whole_categories:
+                normalized_whole_categories.append(whole_category)
+        if whole_units_only:
+            normalized_whole_categories = list(INDICATION_WHOLE_UNIT_CATEGORIES)
+        whole_unit_categories = normalized_whole_categories
         if amount is not None:
             amount = float(amount)
             if not math.isfinite(amount) or amount < 0:
@@ -2178,19 +2480,33 @@ class InvestmentManager:
             "overlap_threshold_pct": overlap_threshold_pct, "diversification": diversification,
             "max_candidate_pct": max_candidate_pct, "min_confidence_pct": min_confidence_pct,
             "min_cash_reserve_pct": min_cash_reserve_pct, "whole_units_only": bool(whole_units_only),
+            "whole_unit_categories": list(whole_unit_categories),
+            "portfolio_context": portfolio_context, "existing_instruments": existing_instruments,
         })
         await self.store.async_set_preferences(user_id, indication_preferences=remembered)
         self._cache.clear_prefix(("portfolio", user_id))
 
         base = self._canonical_currency(user.get("base_currency") or "EUR")
+        emit_progress(10, "portfolio_context")
         portfolio = await self.async_portfolio(user_id)
         live_holdings = portfolio.get("holdings") or []
+        emit_progress(18, "portfolio_context", holdings=len(live_holdings))
         holding_by_key = {self._candidate_key(h): h for h in live_holdings}
-        category_values = {str(cat.get("category")): float(cat.get("value") or 0) for cat in (portfolio.get("categories") or [])}
         portfolio_total = float(portfolio.get("total") or 0)
+        # Context diversification follows economic exposure, not ETF/fund wrapper.
+        # It is only a downward user-context constraint; the validated model
+        # weights and risk envelope remain the hard upper bounds.
+        economic_sleeve_values: dict[str, float] = defaultdict(float)
+        for holding in live_holdings:
+            classification = classify_economic_exposure(holding)
+            if classification["allocatable"]:
+                economic_sleeve_values[classification["economic_sleeve"]] += float(
+                    holding.get("value") or 0.0
+                )
         owned_funds = await self._owned_fund_holdings(live_holdings) if overlap_policy != "allow" else []
 
         candidate_pool_size = 0
+        emit_progress(22, "candidate_search")
         if scope == "discover":
             requested, candidate_pool_size = await self._discover_indication_candidates(base, category, accepted_region)
             source = "discovery_category" if category else "discovery_all"
@@ -2213,6 +2529,7 @@ class InvestmentManager:
             if not requested:
                 raise ValueError("Current search has no indication candidates")
 
+        emit_progress(28, "candidate_search", candidates=len(requested), pool_size=candidate_pool_size)
         clean: list[dict[str, Any]] = []
         seen: set[tuple[str, str]] = set()
         for raw in requested:
@@ -2243,8 +2560,40 @@ class InvestmentManager:
         if not clean:
             raise ValueError("No candidates are available for this indication")
 
-        overlap_rows = await asyncio.gather(*(self._candidate_portfolio_overlap(asset, owned_funds) for asset in clean))
+        emit_progress(31, "candidate_checks", candidates=len(clean))
+        # V10+ validates economic exposure, not the product wrapper.  Reference
+        # series and unknown wrappers stay visible as exclusions but can never
+        # reach scoring/allocation.
         excluded_candidates: list[dict[str, Any]] = []
+        economically_allocatable: list[dict[str, Any]] = []
+        for asset in clean:
+            classification = classify_economic_exposure(asset)
+            asset.update(classification)
+            asset.update(self._economic_classification_metadata(asset, classification))
+            if not classification["allocatable"]:
+                excluded_candidates.append(
+                    {
+                        "provider": asset["provider"],
+                        "provider_id": asset["provider_id"],
+                        "symbol": asset["symbol"],
+                        "name": asset["name"],
+                        "category": asset["category"],
+                        "economic_subtype": classification["economic_subtype"],
+                        "economic_sleeve": classification["economic_sleeve"],
+                        "reason": (
+                            "nontradable_reference"
+                            if classification["economic_sleeve"] == "nontradable"
+                            else "unknown_economic_subtype"
+                        ),
+                    }
+                )
+                continue
+            economically_allocatable.append(asset)
+        clean = economically_allocatable
+        if not clean:
+            raise ValueError("No economically allocatable candidates are available")
+
+        overlap_rows = await asyncio.gather(*(self._candidate_portfolio_overlap(asset, owned_funds) for asset in clean))
         eligible_assets: list[tuple[dict[str, Any], dict[str, Any]]] = []
         overlap_threshold = overlap_threshold_pct / 100.0
         for asset, overlap in zip(clean, overlap_rows, strict=True):
@@ -2269,26 +2618,67 @@ class InvestmentManager:
             raise ValueError("All indication candidates were excluded by the portfolio overlap policy")
 
         history_period = "5y" if horizon in {"long", "very_long"} else "1y"
+        risk_history_period = "5y"
+        risk_fx_history_period = "5y_risk"
+        emit_progress(35, "market_history", completed=0, total=len(eligible_assets))
 
         async def evaluate(asset: dict[str, Any], overlap: dict[str, Any]) -> dict[str, Any]:
             quote = await self._quote(asset)
-            points = await self._history(asset, history_period)
+            if history_period == risk_history_period:
+                points = await self._history(asset, history_period)
+                risk_points = points
+            else:
+                points, risk_points = await asyncio.gather(
+                    self._history(asset, history_period),
+                    self._history(asset, risk_history_period),
+                )
+            risk_history_error = None
+            try:
+                risk_points_for_contract = await self._convert_history(
+                    list(risk_points),
+                    quote.currency,
+                    base,
+                    risk_fx_history_period,
+                )
+                risk_weekly_returns = weekly_return_map_from_points(
+                    risk_points_for_contract
+                )
+            except Exception as err:
+                # Market scoring can still be shown, but a candidate without a
+                # base-currency risk history must receive zero validated weight.
+                risk_weekly_returns = {}
+                risk_history_error = str(err)
             key = self._candidate_key(asset)
             existing = holding_by_key.get(key) or {}
             holding_value = float(existing.get("value") or 0)
             holding_weight = holding_value / portfolio_total if portfolio_total > 0 else 0.0
-            cat_value = category_values.get(str(asset.get("category") or "other"), 0.0)
-            category_weight = cat_value / portfolio_total if portfolio_total > 0 else 0.0
+            sleeve_value = economic_sleeve_values.get(
+                str(asset.get("economic_sleeve") or "unknown"), 0.0
+            )
+            category_weight = (
+                sleeve_value / portfolio_total if portfolio_total > 0 else 0.0
+            )
             overlap_score = float(overlap.get("overlap") or 0.0)
             if overlap.get("matched") and overlap_score <= 0:
                 overlap_score = 0.15
-            deterministic = analyze_prices(
+            # V10/V11/V12c/V13 use one horizon-specific market view for every
+            # risk tolerance.  The production scorer therefore runs on the
+            # frozen very-high scaffold and the selected user risk enters only
+            # in portfolio construction below.
+            scaffold = analyze_prices(
                 [point.value for point in points], current_price=quote.price,
                 category=str(asset.get("category") or "other"),
                 holding_weight=holding_weight, category_weight=category_weight,
-                risk_tolerance=risk_tolerance, horizon=horizon, strategy=strategy,
+                risk_tolerance=SIGNAL_SCAFFOLD_RISK,
+                horizon=horizon,
+                strategy=strategy,
                 portfolio_overlap=overlap_score, overlap_policy=overlap_policy,
             ).as_dict()
+            deterministic = prepare_scored_candidate(
+                scaffold,
+                asset,
+                risk_weekly_returns,
+            )
             fx = await self._fx_rate(quote.currency, base)
             deterministic.update(
                 {
@@ -2304,11 +2694,58 @@ class InvestmentManager:
                     "portfolio_overlap_kind": overlap.get("kind"),
                     "portfolio_overlap_method": overlap.get("method"),
                     "portfolio_overlap_sources": overlap.get("sources") or [],
+                    "signal_validation": (
+                        "v13_validated"
+                        if strategy == VALIDATED_SIGNAL_STRATEGY
+                        else "strategy_override_not_v13_signal_validated"
+                    ),
+                    "economic_classification_confidence": asset.get("economic_classification_confidence"),
+                    "economic_classification_basis": asset.get("economic_classification_basis"),
+                    "product_structure_flags": list(asset.get("product_structure_flags") or []),
                 }
             )
+            structure_flags = list(asset.get("product_structure_flags") or [])
+            if structure_flags:
+                deterministic["warnings"] = list(
+                    dict.fromkeys([*(deterministic.get("warnings") or []), *structure_flags])
+                )
+            metrics = dict(deterministic.get("metrics") or {})
+            metrics["selected_risk_tolerance"] = risk_tolerance
+            metrics["portfolio_economic_sleeve_weight"] = category_weight
+            metrics["risk_history_source_period"] = risk_history_period
+            metrics["risk_fx_history_period"] = risk_fx_history_period
+            metrics["risk_history_currency"] = base
+            if risk_history_error:
+                metrics["risk_history_error"] = risk_history_error[:300]
+                deterministic["warnings"] = list(
+                    dict.fromkeys(
+                        [
+                            *(deterministic.get("warnings") or []),
+                            "validated_risk_history_unavailable",
+                        ]
+                    )
+                )
+            deterministic["metrics"] = metrics
             return deterministic
 
-        evaluated = await asyncio.gather(*(evaluate(asset, overlap) for asset, overlap in eligible_assets), return_exceptions=True)
+        completed_evaluations = 0
+
+        async def evaluate_with_progress(asset: dict[str, Any], overlap: dict[str, Any]) -> dict[str, Any]:
+            nonlocal completed_evaluations
+            try:
+                return await evaluate(asset, overlap)
+            finally:
+                completed_evaluations += 1
+                total = max(1, len(eligible_assets))
+                percent = 35 + round(38 * completed_evaluations / total)
+                emit_progress(
+                    min(73, percent),
+                    "market_history",
+                    completed=completed_evaluations,
+                    total=len(eligible_assets),
+                )
+
+        evaluated = await asyncio.gather(*(evaluate_with_progress(asset, overlap) for asset, overlap in eligible_assets), return_exceptions=True)
         results: list[dict[str, Any]] = []
         errors: list[dict[str, str]] = []
         for (asset, _overlap), value in zip(eligible_assets, evaluated, strict=True):
@@ -2318,6 +2755,7 @@ class InvestmentManager:
                 results.append(value)
         if not results:
             raise ValueError("Market history is unavailable for all indication candidates")
+        emit_progress(76, "scoring", evaluated=len(results), errors=len(errors))
         attach_relative_strength(results)
         results.sort(
             key=lambda item: (
@@ -2327,48 +2765,173 @@ class InvestmentManager:
             ),
             reverse=True,
         )
-        if whole_units_only and amount is not None and amount > 0:
-            # Query-level whole-unit mode may discard assets that can never fit
-            # even one unit inside the user's *hard* constraints. Automatic
-            # diversification is intentionally not a hard affordability filter:
-            # the lot-aware allocator may allow one whole unit to cross that
-            # automatic percentage cap. An explicitly entered cap remains hard.
-            max_whole_spend = amount * max(0.0, 1.0 - min_cash_reserve_pct / 100.0)
-            explicit_candidate_cap = (amount * max_candidate_pct / 100.0) if max_candidate_pct is not None else None
-            hard_whole_limit = min(max_whole_spend, explicit_candidate_cap) if explicit_candidate_cap is not None else max_whole_spend
-            affordable: list[dict[str, Any]] = []
-            for item in results:
-                price = float(item.get("portfolio_price") or 0.0)
-                if math.isfinite(price) and price > 0 and price <= hard_whole_limit + 0.005:
-                    affordable.append(item)
-                else:
-                    excluded_candidates.append({
-                        "provider": item.get("provider"), "provider_id": item.get("provider_id"),
-                        "symbol": item.get("symbol"), "name": item.get("name"), "category": item.get("category"),
-                        "reason": "whole_unit_above_explicit_cap" if explicit_candidate_cap is not None and price > explicit_candidate_cap + 0.005 else "whole_unit_above_available_budget",
-                        "portfolio_price": item.get("portfolio_price"),
-                        "whole_unit_hard_cap": round(hard_whole_limit, 2),
-                    })
-            results = affordable
-        allocation = allocate_budget(
-            results,
-            amount,
-            risk_tolerance=risk_tolerance,
-            diversification=diversification,
+        emit_progress(82, "risk_allocation", candidates=len(results))
+        exact_weighted, risk_meta = validated_exact_weights(results, risk_tolerance)
+        constrained_weighted, constraint_meta = apply_downward_weight_constraints(
+            exact_weighted,
+            risk=risk_tolerance,
             min_confidence=min_confidence_pct / 100.0,
-            max_candidate_fraction=None if max_candidate_pct is None else max_candidate_pct / 100.0,
+            max_candidate_fraction=effective_max_candidate_fraction,
             minimum_cash_reserve_fraction=min_cash_reserve_pct / 100.0,
-            whole_units_only=whole_units_only,
         )
 
+        exact_by_key = {
+            self._candidate_key(item): float(weight)
+            for item, weight in exact_weighted
+        }
+        constrained_by_key = {
+            self._candidate_key(item): float(weight)
+            for item, weight in constrained_weighted
+        }
+        prepared_by_key = {
+            self._candidate_key(item): item
+            for item in (risk_meta.get("candidates") or [])
+        }
+        for item in results:
+            key = self._candidate_key(item)
+            prepared = prepared_by_key.get(key) or {}
+            for field in (
+                "economic_subtype",
+                "economic_sleeve",
+                "activation",
+                "risk_history_weeks",
+                "risk_history_eligible",
+            ):
+                if field in prepared:
+                    item[field] = prepared[field]
+            item["allocation_weight_exact_validated"] = exact_by_key.get(key, 0.0)
+            item["allocation_weight_after_constraints"] = constrained_by_key.get(key, 0.0)
+            sleeve = str(item.get("economic_sleeve") or "unknown")
+            sleeve_cap = float(
+                ECONOMIC_SLEEVE_CAPS[risk_tolerance].get(sleeve, 0.0)
+            )
+            item["economic_sleeve_cap"] = sleeve_cap
+            item["allocation_eligible"] = constrained_by_key.get(key, 0.0) > 0.0
+            metrics = dict(item.get("metrics") or {})
+            metrics["signal_scaffold_suitability_eligible"] = metrics.get(
+                "suitability_eligible"
+            )
+            metrics["signal_scaffold_suitability_blockers"] = list(
+                metrics.get("suitability_blockers") or []
+            )
+            metrics["risk_tolerance"] = risk_tolerance
+            metrics["selected_risk_tolerance"] = risk_tolerance
+            metrics["economic_sleeve_cap"] = sleeve_cap
+            metrics["portfolio_volatility_target"] = PORTFOLIO_VOL_TARGET[
+                risk_tolerance
+            ]
+            metrics["portfolio_weekly_es95_target"] = (
+                PORTFOLIO_WEEKLY_ES95_TARGET[risk_tolerance]
+            )
+            suitability_blockers: list[str] = []
+            if sleeve_cap <= 0.0:
+                suitability_blockers.append(
+                    "economic_sleeve_not_allowed_for_selected_risk"
+                )
+            if not bool(item.get("risk_history_eligible")):
+                suitability_blockers.append("validated_risk_history_insufficient")
+            metrics["suitability_eligible"] = not suitability_blockers
+            metrics["suitability_blockers"] = suitability_blockers
+            item["market_label"] = item.get("label")
+            if suitability_blockers:
+                item["label"] = "caution"
+            # Legacy consumers may still read this field.  It now deliberately
+            # reflects the validated economic sleeve instead of wrapper type.
+            metrics["category_cap_fraction"] = sleeve_cap
+            item["metrics"] = metrics
+            warnings = [
+                str(value)
+                for value in (item.get("warnings") or [])
+                if str(value) != "validated_risk_history_insufficient"
+            ]
+            warnings.extend(suitability_blockers)
+            item["warnings"] = list(dict.fromkeys(warnings))
+
+        if amount is None:
+            for item in results:
+                item["suggested_amount"] = None
+                item["suggested_units"] = None
+                item["whole_units_only"] = bool(whole_units_only or str(item.get("category") or "other") in whole_unit_categories)
+            allocation = {
+                "budget": None,
+                "deployed": None,
+                "cash_reserve": None,
+                "deployment_fraction": None,
+            }
+        elif amount <= 0:
+            for item in results:
+                item["suggested_amount"] = 0.0
+                item["suggested_units"] = 0.0
+                item["whole_units_only"] = bool(whole_units_only or str(item.get("category") or "other") in whole_unit_categories)
+            allocation = {
+                "budget": round(amount, 2),
+                "deployed": 0.0,
+                "cash_reserve": round(amount, 2),
+                "deployment_fraction": 0.0,
+            }
+        else:
+            results, projection_meta = production_projection(
+                results,
+                constrained_weighted,
+                risk_tolerance,
+                amount,
+                max_candidate_fraction=effective_max_candidate_fraction,
+                whole_units_only=whole_units_only,
+                whole_unit_categories=whole_unit_categories,
+            )
+            allocation = {
+                "budget": round(amount, 2),
+                "deployed": projection_meta["deployed"],
+                "cash_reserve": projection_meta["cash_reserve"],
+                "deployment_fraction": projection_meta["deployment_fraction"],
+                "projection": projection_meta,
+            }
+
+        allocation.update(
+            {
+                "construction": "v12c_corrected_v11_activation_blend",
+                "signal_scaffold_risk": SIGNAL_SCAFFOLD_RISK,
+                "signal_strategy_validation": (
+                    "v13_validated"
+                    if strategy == VALIDATED_SIGNAL_STRATEGY
+                    else "strategy_override_not_v13_signal_validated"
+                ),
+                "risk_tolerance": risk_tolerance,
+                "economic_sleeve_caps": dict(ECONOMIC_SLEEVE_CAPS[risk_tolerance]),
+                "portfolio_volatility_target": PORTFOLIO_VOL_TARGET[risk_tolerance],
+                "portfolio_weekly_es95_target": PORTFOLIO_WEEKLY_ES95_TARGET[risk_tolerance],
+                "risk_scale": risk_meta.get("risk_scale"),
+                "pre_risk": risk_meta.get("pre"),
+                "post_risk": risk_meta.get("post"),
+                "constraints": constraint_meta,
+                "max_candidate_fraction": effective_max_candidate_fraction,
+                "candidate_cap_is_explicit": max_candidate_pct is not None,
+                "minimum_cash_reserve_fraction": min_cash_reserve_pct / 100.0,
+                "minimum_confidence": min_confidence_pct / 100.0,
+                "diversification": diversification,
+                "whole_units_only": bool(whole_units_only),
+                "whole_unit_categories": list(whole_unit_categories),
+                "risk_after_constraints": constraint_meta.get(
+                    "post_constraint_risk"
+                ),
+                "risk_after_projection": (
+                    allocation.get("projection", {}).get("post_discrete_risk")
+                    if isinstance(allocation.get("projection"), dict)
+                    else None
+                ),
+            }
+        )
+
+        emit_progress(89, "risk_allocation", candidates=len(results))
         ai_review = None
         ai_allocation = None
         if mode != "deterministic":
+            emit_progress(92, "ai_review")
             ai_review = await self._ai_indication_review(
                 user_id,
                 mode=mode,
                 ai_task_entity_id=ai_task_entity_id,
-                language=str(user.get("language") or DEFAULT_UI_LANGUAGE),
+                language=str(response_language or user.get("language") or DEFAULT_UI_LANGUAGE),
                 amount=amount,
                 category=category,
                 risk_tolerance=risk_tolerance,
@@ -2380,6 +2943,7 @@ class InvestmentManager:
                 min_confidence_pct=min_confidence_pct,
                 min_cash_reserve_pct=min_cash_reserve_pct,
                 whole_units_only=whole_units_only,
+                whole_unit_categories=whole_unit_categories,
                 results=results,
             )
             structured = (ai_review or {}).get("structured") or {}
@@ -2392,28 +2956,39 @@ class InvestmentManager:
             if mode == "full_ai":
                 if isinstance(structured, dict):
                     structured["summary"] = str(structured.get("summary") or "")[:1200]
-                ai_allocation = sanitize_ai_ranking(
-                    results,
-                    structured.get("ranking"),
-                    amount,
-                    max_candidate_fraction=effective_max_candidate_fraction,
-                    minimum_cash_reserve_fraction=min_cash_reserve_pct / 100.0,
-                    whole_units_only=whole_units_only,
-                    max_candidate_fraction_is_hard=max_candidate_pct is not None,
-                    risk_tolerance=risk_tolerance,
-                )
-                results.sort(
-                    key=lambda item: (
-                        item.get("ai_score") is not None,
-                        float(item.get("ai_score") if item.get("ai_score") is not None else item.get("score") or 0),
-                    ),
-                    reverse=True,
-                )
+                ranking = structured.get("ranking") if isinstance(structured, dict) else None
+                if self._ai_ranking_usable(ranking, results):
+                    ai_allocation = clamp_ai_ranking_to_deterministic(
+                        results,
+                        ranking,
+                        amount,
+                        risk=risk_tolerance,
+                        whole_units_only=whole_units_only,
+                        whole_unit_categories=whole_unit_categories,
+                    )
+                    if bool((ai_review or {}).get("language_mismatch")):
+                        for item in results:
+                            item["ai_reason"] = ""
+                    results.sort(
+                        key=lambda item: (
+                            item.get("ai_score") is not None,
+                            float(item.get("ai_score") if item.get("ai_score") is not None else item.get("score") or 0),
+                        ),
+                        reverse=True,
+                    )
+                else:
+                    ai_allocation = self._deterministic_ai_fallback(results, allocation)
+                    if ai_review is not None:
+                        ai_review["fallback_to_deterministic"] = True
+                        ai_review["fallback_reason"] = "unusable_ai_ranking"
+            emit_progress(96, "ai_review")
 
-        if whole_units_only and amount is not None:
+        emit_progress(98, "finalizing")
+        if (whole_units_only or whole_unit_categories) and amount is not None:
             unit_key = "ai_suggested_units" if mode == "full_ai" else "suggested_units"
             for item in results:
-                item["whole_unit_selected"] = float(item.get(unit_key) or 0.0) >= 1.0
+                if bool(item.get("whole_units_only")):
+                    item["whole_unit_selected"] = float(item.get(unit_key) or 0.0) >= 1.0
             active_allocation = ai_allocation if mode == "full_ai" else allocation
             amount_key = "ai_suggested_amount" if mode == "full_ai" else "suggested_amount"
             deployed = round(sum(float(item.get(amount_key) or 0.0) for item in results), 2)
@@ -2449,8 +3024,11 @@ class InvestmentManager:
                 "min_confidence_pct": min_confidence_pct,
                 "min_cash_reserve_pct": min_cash_reserve_pct,
                 "whole_units_only": bool(whole_units_only),
+                "whole_unit_categories": list(whole_unit_categories),
                 "ai_task_entity_id": ai_task_entity_id,
                 "ai_uses_home_assistant_preferred": not bool(str(ai_task_entity_id or "").strip()),
+                "portfolio_context": portfolio_context,
+                "existing_instruments": existing_instruments,
             },
             "results": results,
             "excluded_candidates": excluded_candidates,
@@ -2521,13 +3099,38 @@ class InvestmentManager:
         norm_base, _ = self._normalize_currency(base)
         if norm_currency == norm_base:
             return [HistoryPoint(p.ts, p.value * scale) for p in points]
-        try:
-            fx_points = list(await self.frankfurter.async_history(f"{norm_currency}/{norm_base}", period))
-        except Exception as err:
-            # Never paint a historical foreign-currency chart using today's FX.
-            # If the historical series is unavailable, let this holding's trend
-            # fail cleanly while the local transaction ledger remains visible.
-            raise ProviderError(f"Historical FX unavailable for {norm_currency}/{norm_base}: {err}") from err
+        fx_key = ("fx_history", norm_currency, norm_base, period)
+        cached_fx = self._cache.get(fx_key, DEFAULT_HISTORY_CACHE_SECONDS)
+        if cached_fx is not None:
+            fx_points = [HistoryPoint(**row) for row in cached_fx]
+        else:
+            lock_key = (norm_currency, norm_base, period)
+            lock = self._fx_history_locks.setdefault(lock_key, asyncio.Lock())
+            async with lock:
+                cached_fx = self._cache.get(
+                    fx_key, DEFAULT_HISTORY_CACHE_SECONDS
+                )
+                if cached_fx is not None:
+                    fx_points = [HistoryPoint(**row) for row in cached_fx]
+                else:
+                    try:
+                        async with self._network_sem:
+                            fx_points = list(
+                                await self.frankfurter.async_history(
+                                    f"{norm_currency}/{norm_base}", period
+                                )
+                            )
+                    except Exception as err:
+                        # Never paint foreign-currency history using today's FX.
+                        # The validated allocator fails closed when this risk feed
+                        # is unavailable instead of inventing a conversion.
+                        raise ProviderError(
+                            f"Historical FX unavailable for "
+                            f"{norm_currency}/{norm_base}: {err}"
+                        ) from err
+                    self._cache.set(
+                        fx_key, [point.as_dict() for point in fx_points]
+                    )
         fx_points.sort(key=lambda x: x.ts)
         out: list[HistoryPoint] = []
         idx = 0

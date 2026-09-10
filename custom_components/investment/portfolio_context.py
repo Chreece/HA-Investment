@@ -136,6 +136,20 @@ def exposure_profile(asset: dict[str, Any]) -> dict[str, Any]:
 def context_score_fields(item: dict[str, Any]) -> dict[str, float | None]:
     """Recover the standalone market score from deterministic context penalties."""
     metrics = item.get("metrics") if isinstance(item.get("metrics"), dict) else {}
+    # V14b already carries the V10/V13 risk-invariant market score and moves
+    # portfolio context to a downward-only allocation constraint.  Re-running
+    # the legacy generic restoration here would overwrite the defensive-sleeve
+    # score (cash/government/aggregate bonds) after allocation had completed.
+    if metrics.get("market_score_risk_profile_invariant") is True:
+        try:
+            market_score = float(item.get("market_score", item.get("score")))
+        except (TypeError, ValueError):
+            market_score = math.nan
+        if math.isfinite(market_score):
+            return {
+                "market_score": round(max(0.0, min(100.0, market_score)), 2),
+                "portfolio_context_adjustment": 0.0,
+            }
     try:
         final_score = float(item.get("score"))
         confidence = float(item.get("confidence") or 0.0)
