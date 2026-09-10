@@ -1,5 +1,8 @@
 # HA Investment
 
+💙 **Enjoying this hobby project? [Send a voluntary thank-you via PayPal](https://www.paypal.me/ChristosBaltatzidis).**
+
+
 A **free, multi-user investment portfolio for Home Assistant**. Search and add stocks, ETFs, funds, crypto, indices, commodities/futures and FX instruments, then track current value, today's move, cost-basis profit/loss and historical trends directly inside Home Assistant.
 
 > **No paid API subscription is required.** The default provider stack uses public/no-key endpoints and caches responses to reduce load. Market-data availability and delay depend on the source and exchange.
@@ -178,3 +181,11 @@ HA Investment is a portfolio display and tracking tool, not a broker, trading sy
 ## License
 
 MIT
+
+## ❤️ Voluntary support
+
+This is a private hobby project maintained in my free time and provided independently of contributions.
+
+If you enjoy the project and would like to send me a voluntary personal thank-you, you can use **[PayPal](https://www.paypal.me/ChristosBaltatzidis)**.
+
+Contributions are completely optional and do **not** buy or guarantee features, support, development work, early access, priority, or any other service. This is not a charitable donation and no donation receipt is issued.
