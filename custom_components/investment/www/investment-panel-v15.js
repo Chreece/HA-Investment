@@ -1,12 +1,11 @@
 import "./investment-panel-runtime.js?v=0.4.0-r37";
 
 // V15 score-help guard.
-// The existing runtime deliberately opens most help labels from hover. The
-// historical market-score bubble must not open merely because new result DOM
-// was inserted under a stationary mouse pointer. We therefore suppress the
-// runtime's score-label pointer handlers and reproduce the intended hover
-// behavior only after a real pointer movement. Touch remains handled by the
-// existing runtime click/tap path.
+// The historical market-score bubble must not open merely because result DOM
+// appeared beneath a stationary mouse pointer. The existing runtime handles
+// ordinary help targets; this bridge suppresses score-label hover events and
+// re-opens score help only after a genuine mouse movement. Touch remains on the
+// runtime's normal click/tap path.
 const SCORE_HELP = ".signal-help";
 let lastMouseX = null;
 let lastMouseY = null;
@@ -39,9 +38,7 @@ const observer = new MutationObserver((mutations) => {
       mutation.target.removeAttribute("title");
     }
     for (const node of mutation.addedNodes || []) {
-      if (node.nodeType === Node.ELEMENT_NODE) {
-        removeScoreNativeTitles(node);
-      }
+      if (node.nodeType === Node.ELEMENT_NODE) removeScoreNativeTitles(node);
     }
   }
 });
@@ -57,6 +54,13 @@ const start = () => {
 };
 
 const moveIsReal = (event) => {
+  const dx = Number(event?.movementX);
+  const dy = Number(event?.movementY);
+  if (Number.isFinite(dx) && Number.isFinite(dy) && (dx !== 0 || dy !== 0)) {
+    lastMouseX = Number(event.clientX);
+    lastMouseY = Number(event.clientY);
+    return true;
+  }
   const x = Number(event?.clientX);
   const y = Number(event?.clientY);
   if (!Number.isFinite(x) || !Number.isFinite(y)) return false;
@@ -84,8 +88,6 @@ document.addEventListener("pointermove", (event) => {
 
 document.addEventListener("pointerenter", (event) => {
   if (event?.pointerType !== "mouse" || !pathTarget(event)) return;
-  // Block the runtime's pointerenter arming. A following real pointermove
-  // above performs the explicit hover activation instead.
   event.stopPropagation();
 }, true);
 
