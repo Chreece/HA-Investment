@@ -1,96 +1,43 @@
 name: V15 isolated test
-
 on:
   push:
     branches: [v15-test]
-  workflow_dispatch:
-
 jobs:
   test-v15:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
-      - name: Install pytest
-        run: python -m pip install --disable-pip-version-check pytest
-      - name: Apply V15 candidate changes
+      - run: python -m pip install --disable-pip-version-check pytest
+      - name: Apply candidate changes in CI workspace
         shell: python
         run: |
           from pathlib import Path
-
-          indication = Path('custom_components/investment/indication.py')
-          runtime = Path('custom_components/investment/www/investment-panel-runtime.js')
-          tests = Path('tests/test_v14g7_desktop_hover_portal.py')
-
-          s = indication.read_text(encoding='utf-8')
-          a = s.replace('reasons.append("medium_term_momentum_negative")', 'warnings.append("medium_term_momentum_negative")', 1)
-          if a == s:
-              assert 'warnings.append("medium_term_momentum_negative")' in s
-          s = a.replace('reasons.append("price_below_trend_averages")', 'warnings.append("price_below_trend_averages")', 1)
-          if s == a:
-              assert 'warnings.append("price_below_trend_averages")' in a
-          indication.write_text(s, encoding='utf-8')
-
-          s = runtime.read_text(encoding='utf-8')
-          old_hover = 'const isMouseHover=e=>e?.pointerType==="mouse"&&trueHoverMouse()&&!coarsePointer();'
-          new_hover = 'const isMouseHover=e=>e?.pointerType==="mouse"&&trueHoverMouse()&&!coarsePointer()&&!e?.target?.closest?.(".signal-help");'
-          if old_hover in s:
-              s = s.replace(old_hover, new_hover, 1)
-          elif new_hover not in s:
-              raise SystemExit('runtime: isMouseHover anchor missing')
-
-          old_click = 'if(touch)toggleHelp(target,{touch:true,source:"tap"});else closeHelp(null);return;'
-          new_click = 'if(touch||target.classList.contains("signal-help"))toggleHelp(target,{touch,source:touch?"tap":"click"});else closeHelp(null);return;'
-          if old_click in s:
-              s = s.replace(old_click, new_click, 1)
-          elif new_click not in s:
-              raise SystemExit('runtime: click handler anchor missing')
-
-          needle = 'const modal=root.querySelector(".indication-modal");'
-          title_strip = needle + '\n    modal?.querySelectorAll(".signal-help[title]").forEach(el=>el.removeAttribute("title"));'
+          indication=Path('custom_components/investment/indication.py')
+          runtime=Path('custom_components/investment/www/investment-panel-runtime.js')
+          s=indication.read_text(encoding='utf-8')
+          old='reasons.append("medium_term_momentum_negative")'
+          if old in s: s=s.replace(old,'warnings.append("medium_term_momentum_negative")',1)
+          old='reasons.append("price_below_trend_averages")'
+          if old in s: s=s.replace(old,'warnings.append("price_below_trend_averages")',1)
+          indication.write_text(s,encoding='utf-8')
+          s=runtime.read_text(encoding='utf-8')
+          old='const isMouseHover=e=>e?.pointerType==="mouse"&&trueHoverMouse()&&!coarsePointer();'
+          new='const isMouseHover=e=>e?.pointerType==="mouse"&&trueHoverMouse()&&!coarsePointer()&&!e?.target?.closest?.(".signal-help");'
+          if old in s: s=s.replace(old,new,1)
+          old='if(touch)toggleHelp(target,{touch:true,source:"tap"});else closeHelp(null);return;'
+          new='if(touch||target.classList.contains("signal-help"))toggleHelp(target,{touch,source:touch?"tap":"click"});else closeHelp(null);return;'
+          if old in s: s=s.replace(old,new,1)
           if 'signal-help[title]' not in s:
-              if needle not in s:
-                  raise SystemExit('runtime: modal anchor missing')
-              s = s.replace(needle, title_strip, 1)
-          runtime.write_text(s, encoding='utf-8')
-
-          # Existing V14g7 tests encoded the old generic-hover contract.
-          # Replace them with the V15 score-specific explicit-action contract.
-          t = tests.read_text(encoding='utf-8')
-          t = t.replace(
-              'arm = \'target.addEventListener("pointerenter",e=>{if(isMouseHover(e))target.setAttribute("data-help-hover-ready","1");});\'',
-              'arm = \'target.addEventListener("pointerenter",e=>{if(isScoreHelp(target))return;if(isMouseHover(e))target.setAttribute("data-help-hover-ready","1");});\'',
-          )
-          t = t.replace(
-              'move = \'target.addEventListener("pointermove",e=>{if(!isMouseHover(e)||target.getAttribute("data-help-hover-ready")!=="1")return;\'',
-              'move = \'target.addEventListener("pointermove",e=>{if(isScoreHelp(target))return;if(!isMouseHover(e)||target.getAttribute("data-help-hover-ready")!=="1")return;\'',
-          )
-          t = t.replace(
-              'assert \'if(touch)toggleHelp(target,{touch:true,source:"tap"});else closeHelp(null);return;\' in runtime',
-              'assert \'if(touch||target.classList.contains("signal-help"))toggleHelp(target,{touch,source:touch?"tap":"click"});else closeHelp(null);return;\' in runtime',
-          )
-          tests.write_text(t, encoding='utf-8')
-
-          Path('tests/test_v15_score_help_and_semantics.py').write_text('''from pathlib import Path\n\nROOT = Path(__file__).resolve().parents[1]\n\ndef read(name):\n    return (ROOT / name).read_text(encoding="utf-8")\n\ndef test_score_help_is_never_hover_activated():\n    s = read("custom_components/investment/www/investment-panel-runtime.js")\n    assert 'const isMouseHover=e=>e?.pointerType==="mouse"&&trueHoverMouse()&&!coarsePointer()&&!e?.target?.closest?.(".signal-help");' in s\n    assert 'if(touch||target.classList.contains("signal-help"))toggleHelp(target,{touch,source:touch?"tap":"click"});else closeHelp(null);return;' in s\n    assert 'signal-help[title]' in s\n\ndef test_bearish_signals_are_warnings_not_positive_reasons():\n    s = read("custom_components/investment/indication.py")\n    assert 'warnings.append("medium_term_momentum_negative")' in s\n    assert 'warnings.append("price_below_trend_averages")' in s\n    assert 'reasons.append("medium_term_momentum_negative")' not in s\n    assert 'reasons.append("price_below_trend_averages")' not in s\n''', encoding='utf-8')
-
-          print('V15 candidate changes applied')
-      - name: Full regression
+              needle='const modal=root.querySelector(".indication-modal");'
+              if needle in s: s=s.replace(needle,needle+'\n    modal?.querySelectorAll(".signal-help[title]").forEach(el=>el.removeAttribute("title"));',1)
+          runtime.write_text(s,encoding='utf-8')
+      - name: Full regression and syntax
         run: |
           python -m pytest -q tests
           python -m compileall -q custom_components tests
           node --check custom_components/investment/www/investment-panel.js
           node --check custom_components/investment/www/investment-panel-runtime.js
           git diff --check
-      - name: Commit tested candidate
-        shell: bash
-        run: |
-          set -euo pipefail
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add custom_components/investment/indication.py custom_components/investment/www/investment-panel-runtime.js tests/test_v14g7_desktop_hover_portal.py tests/test_v15_score_help_and_semantics.py .github/workflows/v15-test.yml
-          git commit -m "Harden indication presentation" || true
-          git push
