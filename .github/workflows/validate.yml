@@ -35,12 +35,15 @@ jobs:
           category: integration
 
   v15-source-apply:
-    if: github.event_name == 'push' && github.ref_name == 'v15-research-hardening'
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.ref == 'v15-research-hardening' && github.event.pull_request.head.repo.full_name == github.repository
     permissions:
       contents: write
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: v15-research-hardening
+          fetch-depth: 2
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
@@ -73,29 +76,20 @@ jobs:
           elif new_hover not in s:
               raise SystemExit('runtime: isMouseHover anchor missing')
 
-          # Preserve the existing generic desktop-click contract while adding an
-          # explicit score click/tap handler before the modal-level fallback.
-          marker = 'modal.addEventListener("click",e=>{'
-          score_handler = '''modal.querySelectorAll(".signal-help").forEach(target=>{
-        target.addEventListener("click",e=>{
-          const touch=lastPointerType==="touch"||lastPointerType==="pen"||coarsePointer();
-          toggleHelp(target,{touch,source:touch?"tap":"click"});
-          e.preventDefault();
-          e.stopPropagation();
-        });
+          score_marker = 'const modal=root.querySelector(".indication-modal");'
+          score_handler = '''const modal=root.querySelector(".indication-modal");
+    modal?.querySelectorAll(".signal-help[title]").forEach(el=>el.removeAttribute("title"));
+    modal?.querySelectorAll(".signal-help").forEach(target=>{
+      target.addEventListener("click",e=>{
+        const touch=lastPointerType==="touch"||lastPointerType==="pen"||coarsePointer();
+        toggleHelp(target,{touch,source:touch?"tap":"click"});
+        e.preventDefault();
+        e.stopPropagation();
       });
-      '''
-          if 'target.addEventListener("click",e=>{\n          const touch=lastPointerType==="touch"' not in s:
-              if marker not in s:
-                  raise SystemExit('runtime: modal click marker missing')
-              s = s.replace(marker, score_handler + marker, 1)
-
-          # Remove native browser title tooltips on score labels.
-          needle = 'const modal=root.querySelector(".indication-modal");'
-          if 'signal-help[title]' not in s:
-              if needle not in s:
-                  raise SystemExit('runtime: modal query marker missing')
-              s = s.replace(needle, needle + '\n    modal?.querySelectorAll(".signal-help[title]").forEach(el=>el.removeAttribute("title"));', 1)
+    });'''
+          if 'modal?.querySelectorAll(".signal-help").forEach(target=>' not in s:
+              assert score_marker in s
+              s = s.replace(score_marker, score_handler, 1)
 
           runtime.write_text(s, encoding='utf-8')
           PY
@@ -106,16 +100,16 @@ jobs:
           node --check custom_components/investment/www/investment-panel.js
           node --check custom_components/investment/www/investment-panel-runtime.js
           git diff --check
-      - name: Commit V15 changes and restore workflow
+      - name: Commit V15 changes
         shell: bash
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add custom_components/investment/indication.py custom_components/investment/www/investment-panel-runtime.js
-          git fetch origin indications --depth=1
-          git checkout origin/indications -- .github/workflows/validate.yml
-          git add .github/workflows/validate.yml
-          git diff --cached --quiet && exit 0
+          if git diff --cached --quiet; then
+            echo "No source changes needed."
+            exit 0
+          fi
           git commit -m "Refine model presentation safeguards"
-          git push
+          git push origin v15-research-hardening
