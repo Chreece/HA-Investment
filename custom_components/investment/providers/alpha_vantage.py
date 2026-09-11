@@ -180,3 +180,55 @@ class AlphaVantageProvider(MarketProvider):
         if not points:
             raise ProviderError(f"No Alpha Vantage history for {symbol}")
         return points
+
+    async def async_adjusted_history(
+        self, provider_id: str, period: str
+    ) -> Sequence[HistoryPoint]:
+        symbol, _ = _decode_provider_id(provider_id)
+        if period == "1y":
+            horizon = _PERIOD["1y"][2]
+            params: dict[str, Any] = {
+                "function": "TIME_SERIES_DAILY_ADJUSTED",
+                "symbol": symbol,
+                "outputsize": "full",
+            }
+            if self.entitlement != "default":
+                params["entitlement"] = self.entitlement
+        elif period == "5y":
+            horizon = _PERIOD["5y"][2]
+            params = {
+                "function": "TIME_SERIES_WEEKLY_ADJUSTED",
+                "symbol": symbol,
+            }
+        else:
+            raise ProviderError(
+                f"Adjusted indication history is unsupported for period {period}"
+            )
+
+        data = await self._get_json(**params)
+        key = next(
+            (
+                name
+                for name, value in data.items()
+                if "time series" in name.lower() and isinstance(value, dict)
+            ),
+            None,
+        )
+        if not key:
+            raise ProviderError(f"No Alpha Vantage adjusted history for {symbol}")
+
+        cutoff = int(time.time()) - horizon
+        points: list[HistoryPoint] = []
+        for stamp, row in data[key].items():
+            if not isinstance(row, dict):
+                continue
+            adjusted_close = row.get("5. adjusted close")
+            if adjusted_close in (None, ""):
+                continue
+            ts = _ts(stamp)
+            if ts >= cutoff:
+                points.append(HistoryPoint(ts=ts, value=float(adjusted_close)))
+        points.sort(key=lambda item: item.ts)
+        if not points:
+            raise ProviderError(f"No Alpha Vantage adjusted history for {symbol}")
+        return points

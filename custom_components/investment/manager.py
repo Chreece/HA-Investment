@@ -2625,12 +2625,22 @@ class InvestmentManager:
         async def evaluate(asset: dict[str, Any], overlap: dict[str, Any]) -> dict[str, Any]:
             quote = await self._quote(asset)
             if history_period == risk_history_period:
-                points = await self._history(asset, history_period)
+                points, model_history_source = await self._validated_indication_history(
+                    asset, history_period, quote.currency
+                )
                 risk_points = points
+                risk_history_source = model_history_source
             else:
-                points, risk_points = await asyncio.gather(
-                    self._history(asset, history_period),
-                    self._history(asset, risk_history_period),
+                (
+                    (points, model_history_source),
+                    (risk_points, risk_history_source),
+                ) = await asyncio.gather(
+                    self._validated_indication_history(
+                        asset, history_period, quote.currency
+                    ),
+                    self._validated_indication_history(
+                        asset, risk_history_period, quote.currency
+                    ),
                 )
             risk_history_error = None
             try:
@@ -2715,6 +2725,9 @@ class InvestmentManager:
             metrics["risk_history_source_period"] = risk_history_period
             metrics["risk_fx_history_period"] = risk_fx_history_period
             metrics["risk_history_currency"] = base
+            metrics["validated_model_history_source"] = model_history_source
+            metrics["validated_risk_history_source"] = risk_history_source
+            metrics["validated_history_contract"] = "corporate_action_aware"
             if risk_history_error:
                 metrics["risk_history_error"] = risk_history_error[:300]
                 deterministic["warnings"] = list(
@@ -3014,6 +3027,7 @@ class InvestmentManager:
                 "risk_tolerance": risk_tolerance,
                 "horizon": horizon,
                 "history_period": history_period,
+                "validated_history_contract": "corporate_action_aware",
                 "strategy": strategy,
                 "overlap_policy": overlap_policy,
                 "overlap_threshold_pct": overlap_threshold_pct,
@@ -3073,6 +3087,102 @@ class InvestmentManager:
                     raise first_err
         self._cache.set(key, [x.as_dict() for x in points])
         return points
+
+    async def _validated_indication_history(
+        self,
+        holding: dict[str, Any],
+        period: str,
+        expected_currency: str,
+    ) -> tuple[list[HistoryPoint], str]:
+        """Return only history compatible with the V13 validated input contract."""
+        provider_name = str(holding.get("provider") or "")
+        provider_id = str(holding.get("provider_id") or "")
+        category = str(holding.get("category") or "other").lower()
+        cache_key = (
+            "validated_indication_history",
+            provider_name,
+            provider_id,
+            period,
+            str(expected_currency or "").upper(),
+        )
+        cached = self._cache.get(cache_key, DEFAULT_HISTORY_CACHE_SECONDS)
+        if cached is not None:
+            return (
+                [HistoryPoint(**row) for row in cached["points"]],
+                str(cached["source"]),
+            )
+
+        if category == "crypto":
+            points = await self._history(holding, period)
+            source = f"{provider_name}:corporate_action_neutral_crypto"
+            self._cache.set(
+                cache_key,
+                {"source": source, "points": [point.as_dict() for point in points]},
+            )
+            return points, source
+
+        if category not in {"stock", "etf", "fund"}:
+            raise ProviderError(
+                "Validated adjusted history is unavailable for this "
+                f"investment category: {category}"
+            )
+
+        provider = self.providers.get(provider_name)
+        first_err: Exception | None = None
+        if provider is not None:
+            try:
+                async with self._network_sem:
+                    if provider_name == "yahoo":
+                        points = list(
+                            await self.yahoo.async_adjusted_history(
+                                provider_id,
+                                period,
+                                expected_currency=expected_currency,
+                            )
+                        )
+                    else:
+                        points = list(
+                            await provider.async_adjusted_history(provider_id, period)
+                        )
+                source = f"{provider_name}:split_dividend_adjusted"
+                self._cache.set(
+                    cache_key,
+                    {"source": source, "points": [point.as_dict() for point in points]},
+                )
+                return points, source
+            except Exception as err:
+                first_err = err
+
+        # No exchange suffix/listing is guessed. The fallback is accepted only
+        # when Yahoo resolves the exact same symbol and quote currency.
+        if provider_name != "yahoo":
+            symbol = str(holding.get("symbol") or "").strip()
+            if symbol:
+                try:
+                    async with self._network_sem:
+                        points = list(
+                            await self.yahoo.async_adjusted_history(
+                                symbol,
+                                period,
+                                expected_currency=expected_currency,
+                                require_exact_symbol=True,
+                            )
+                        )
+                    source = "yahoo:split_dividend_adjusted_exact_symbol_fallback"
+                    self._cache.set(
+                        cache_key,
+                        {"source": source, "points": [point.as_dict() for point in points]},
+                    )
+                    return points, source
+                except Exception as fallback_err:
+                    if first_err is None:
+                        first_err = fallback_err
+
+        detail = str(first_err or "no compatible adjusted source")
+        raise ProviderError(
+            "V13-compatible split/dividend-adjusted history is unavailable "
+            f"for {holding.get('symbol') or provider_id}: {detail}"
+        )
 
     async def _fallback_paid_history(
         self, holding: dict[str, Any], period: str, first_err: Exception

@@ -66,6 +66,14 @@ class MarketProvider(ABC):
     async def async_quote(self, provider_id: str) -> Quote:
         """Return latest quote."""
 
+    async def async_adjusted_history(
+        self, provider_id: str, period: str
+    ) -> Sequence[HistoryPoint]:
+        """Return V13-compatible adjusted history when explicitly supported."""
+        raise ProviderError(
+            f"{self.provider_id} does not provide validated adjusted history"
+        )
+
     @abstractmethod
     async def async_history(self, provider_id: str, period: str) -> Sequence[HistoryPoint]:
-        """Return historical points."""
+        """Return ordinary provider history for charts/general portfolio use."""

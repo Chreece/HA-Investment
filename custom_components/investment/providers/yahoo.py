@@ -415,14 +415,26 @@ class YahooProvider(MarketProvider):
                 existing += 1
         return rows
 
-    async def _chart(self, symbol: str, range_: str, interval: str):
+    async def _chart(
+        self,
+        symbol: str,
+        range_: str,
+        interval: str,
+        *,
+        include_adjusted_close: bool = False,
+    ):
         safe_symbol = quote(symbol, safe="")
+        params = {
+            "range": range_,
+            "interval": interval,
+            "includePrePost": "false",
+            "events": "div,splits",
+        }
+        if include_adjusted_close:
+            params["includeAdjustedClose"] = "true"
         data = await self._get_json(
             f"https://query1.finance.yahoo.com/v8/finance/chart/{safe_symbol}",
-            range=range_,
-            interval=interval,
-            includePrePost="false",
-            events="div,splits",
+            **params,
         )
         chart = data.get("chart", {})
         if chart.get("error"):
@@ -454,17 +466,77 @@ class YahooProvider(MarketProvider):
             delayed=None,
         )
 
-    async def async_history(self, provider_id: str, period: str) -> Sequence[HistoryPoint]:
+    async def _history_points(
+        self,
+        provider_id: str,
+        period: str,
+        *,
+        adjusted: bool,
+        expected_currency: str | None = None,
+        require_exact_symbol: bool = False,
+    ) -> list[HistoryPoint]:
         range_, interval, horizon = _PERIOD.get(period, _PERIOD["1m"])
-        result = await self._chart(provider_id, range_, interval)
+        result = await self._chart(
+            provider_id,
+            range_,
+            interval,
+            include_adjusted_close=adjusted,
+        )
+        meta = result.get("meta") or {}
+        if expected_currency is not None and not quote_currency_matches(
+            meta.get("currency"), expected_currency
+        ):
+            raise ProviderError(
+                f"Yahoo adjusted-history currency mismatch for {provider_id}"
+            )
+        if require_exact_symbol:
+            resolved = str(meta.get("symbol") or "").strip().upper()
+            if not resolved or resolved != str(provider_id).strip().upper():
+                raise ProviderError(
+                    f"Yahoo adjusted-history symbol mismatch for {provider_id}"
+                )
+
         timestamps = result.get("timestamp") or []
-        closes = (((result.get("indicators") or {}).get("quote") or [{}])[0].get("close") or [])
+        indicators = result.get("indicators") or {}
+        if adjusted:
+            values = (
+                (indicators.get("adjclose") or [{}])[0].get("adjclose") or []
+            )
+            if not values:
+                raise ProviderError(f"No Yahoo adjusted history for {provider_id}")
+        else:
+            values = (
+                (indicators.get("quote") or [{}])[0].get("close") or []
+            )
+
         cutoff = int(time.time()) - horizon
         points = [
             HistoryPoint(int(ts), float(value))
-            for ts, value in zip(timestamps, closes, strict=False)
+            for ts, value in zip(timestamps, values, strict=False)
             if value is not None and int(ts) >= cutoff
         ]
         if not points:
-            raise ProviderError(f"No history for {provider_id}")
+            kind = "adjusted history" if adjusted else "history"
+            raise ProviderError(f"No {kind} for {provider_id}")
         return points
+
+    async def async_history(
+        self, provider_id: str, period: str
+    ) -> Sequence[HistoryPoint]:
+        return await self._history_points(provider_id, period, adjusted=False)
+
+    async def async_adjusted_history(
+        self,
+        provider_id: str,
+        period: str,
+        *,
+        expected_currency: str | None = None,
+        require_exact_symbol: bool = False,
+    ) -> Sequence[HistoryPoint]:
+        return await self._history_points(
+            provider_id,
+            period,
+            adjusted=True,
+            expected_currency=expected_currency,
+            require_exact_symbol=require_exact_symbol,
+        )
