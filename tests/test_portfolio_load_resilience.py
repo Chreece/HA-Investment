@@ -57,3 +57,33 @@ def test_first_panel_instance_recovers_from_actual_websocket_events():
     assert "portfolioWaitingConnection" in PANEL
     # Never gate recovery only on the forwarded hass.connected snapshot.
     assert "const connected=value?.connected!==false;" not in PANEL
+
+
+def test_initial_panel_uses_network_free_bootstrap_before_market_refresh():
+    websocket = (COMP / "websocket.py").read_text(encoding="utf-8")
+    assert 'vol.Optional("bootstrap", default=False): bool' in websocket
+    assert "await manager.async_portfolio_bootstrap(user_id)" in websocket
+    assert "async def async_portfolio_bootstrap" in MANAGER
+    bootstrap = function_block(
+        MANAGER,
+        "    async def async_portfolio_bootstrap(",
+        "    async def async_set_base_currency(",
+    )
+    assert "await self.store.async_user(user_id)" in bootstrap
+    assert "fifo_summary(records, current_price=None)" in bootstrap
+    assert '"bootstrap_local": True' in bootstrap
+    assert "await self._quote(" not in bootstrap
+    assert "await self._fx_rate(" not in bootstrap
+    assert "async_history(" not in bootstrap
+    assert "async_rate(" not in bootstrap
+
+    assert "if(connected)this.bootstrapPortfolio();" in PANEL
+    assert 'this.call({type:"investment/get_portfolio",bootstrap:true})' in PANEL
+    assert "5000," in PANEL
+    assert 'this._portfolio?.bootstrap_local===true' in PANEL
+    assert "this.loadPortfolio(true,false)" in PANEL
+    assert "this.applyPortfolioPayload(portfolio);" in PANEL
+
+
+def test_bootstrap_unknown_values_are_not_misrepresented_as_zero_history():
+    assert "value!==null&&value!==undefined&&Number.isFinite(Number(value))" in PANEL
