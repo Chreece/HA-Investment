@@ -1,6 +1,7 @@
 from pathlib import Path
 import importlib.util
 import math
+import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 COMP = ROOT / "custom_components" / "investment"
@@ -11,6 +12,7 @@ def load_ledger_module():
     spec = importlib.util.spec_from_file_location("investment_ledger_smoke", COMP / "ledger.py")
     module = importlib.util.module_from_spec(spec)
     assert spec.loader is not None
+    sys.modules[spec.name] = module
     spec.loader.exec_module(module)
     return module
 
