@@ -258,9 +258,9 @@ const DASHBOARD_UI_I18N = {
 for (const [lang, values] of Object.entries(DASHBOARD_UI_I18N)) Object.assign(I18N[lang] || I18N.en, values);
 
 const LOAD_GUARD_I18N = {
-  en:{portfolioLoadFailed:"Portfolio could not be loaded",portfolioLoadTimeout:"Portfolio loading took too long. A market-data source may be slow or unavailable.",portfolioRenderFailed:"Portfolio data loaded, but the dashboard could not be rendered.",retryPortfolio:"Retry portfolio"},
-  de:{portfolioLoadFailed:"Portfolio konnte nicht geladen werden",portfolioLoadTimeout:"Das Laden des Portfolios dauert zu lange. Eine Marktdatenquelle ist möglicherweise langsam oder nicht verfügbar.",portfolioRenderFailed:"Die Portfoliodaten wurden geladen, aber das Dashboard konnte nicht dargestellt werden.",retryPortfolio:"Portfolio erneut laden"},
-  el:{portfolioLoadFailed:"Δεν ήταν δυνατή η φόρτωση του χαρτοφυλακίου",portfolioLoadTimeout:"Η φόρτωση του χαρτοφυλακίου καθυστέρησε υπερβολικά. Κάποια πηγή δεδομένων αγοράς μπορεί να είναι αργή ή μη διαθέσιμη.",portfolioRenderFailed:"Τα δεδομένα του χαρτοφυλακίου φορτώθηκαν, αλλά ο πίνακας δεν μπόρεσε να εμφανιστεί.",retryPortfolio:"Επανάληψη φόρτωσης"}
+  en:{portfolioLoadFailed:"Portfolio could not be loaded",portfolioLoadTimeout:"Portfolio loading took too long. A market-data source may be slow or unavailable.",portfolioRenderFailed:"Portfolio data loaded, but the dashboard could not be rendered.",retryPortfolio:"Retry portfolio",portfolioWaitingConnection:"Waiting for Home Assistant to reconnect…"},
+  de:{portfolioLoadFailed:"Portfolio konnte nicht geladen werden",portfolioLoadTimeout:"Das Laden des Portfolios dauert zu lange. Eine Marktdatenquelle ist möglicherweise langsam oder nicht verfügbar.",portfolioRenderFailed:"Die Portfoliodaten wurden geladen, aber das Dashboard konnte nicht dargestellt werden.",retryPortfolio:"Portfolio erneut laden",portfolioWaitingConnection:"Warte auf die Wiederverbindung mit Home Assistant…"},
+  el:{portfolioLoadFailed:"Δεν ήταν δυνατή η φόρτωση του χαρτοφυλακίου",portfolioLoadTimeout:"Η φόρτωση του χαρτοφυλακίου καθυστέρησε υπερβολικά. Κάποια πηγή δεδομένων αγοράς μπορεί να είναι αργή ή μη διαθέσιμη.",portfolioRenderFailed:"Τα δεδομένα του χαρτοφυλακίου φορτώθηκαν, αλλά ο πίνακας δεν μπόρεσε να εμφανιστεί.",retryPortfolio:"Επανάληψη φόρτωσης",portfolioWaitingConnection:"Αναμονή επανασύνδεσης με το Home Assistant…"}
 };
 for (const [lang, values] of Object.entries(LOAD_GUARD_I18N)) Object.assign(I18N[lang] || I18N.en, values);
 
@@ -596,7 +596,7 @@ function deriveTransactionAmounts({grossQuantity,netQuantity,unitPrice,grossTrad
 class InvestmentPanel extends HTMLElement {
   constructor(){
     super(); this.attachShadow({mode:"open"});
-    this._hass=null; this._loaded=false; this._loading=true; this._loadFailed=false; this._portfolio=null;
+    this._hass=null; this._loaded=false; this._loading=true; this._loadFailed=false; this._portfolio=null; this._haConnected=false; this._bootstrapRetryTimer=null; this._bootstrapRetryAttempt=0;
     this._search=""; this._searchCurrency=null; this._searching=false; this._results=[]; this._searchTimer=null; this._searchSeq=0; this._searchActive=false; this._searchHover=false;
     this._settings=false; this._incognito=false; this._storedIncognito=false; this._connectionLocal=true; this._remotePrivacyDefault=false; this._incognitoSessionOverride=null; this._incognitoRevealSeconds=5; this._incognitoRevealElement=null; this._incognitoRevealNodes=[]; this._incognitoRevealTimer=null; this._addDraft=null; this._adding=false; this._portfolioSeq=0; this._portfolioRenderDeferred=false; this._expanded=new Set(); this._expandedCategories=new Set(); this._expandedLedgers=new Set(); this._error=""; this._haLang="en"; this._preferredLang="auto"; this._lang=null; this._rootPointerBound=false;
     this._trend=null; this._trendTimer=null; this._trendCloseTimer=null; this._trendPinned=false;
@@ -604,17 +604,38 @@ class InvestmentPanel extends HTMLElement {
     this._hoverTrendDelay=1000; this._hoverMoveTolerance=7; this._hoverIntent=null; this._hoverGeneration=0; this._trendDrag=null;
   }
   set hass(value){
+    const wasConnected=this._haConnected;
     this._hass=value;
+    const connected=value?.connected!==false;
+    this._haConnected=connected;
     const haLang=localeKey(value?.locale?.language || value?.language || navigator.language);
     const haLocaleChanged=this._haLang!==haLang;
     this._haLang=haLang;
     const languageChanged=this.applyLanguage(this._preferredLang==="auto"?this._haLang:this._preferredLang);
+    // Home Assistant flips hass.connected false while its websocket is down and
+    // back to true on the connection "ready" event. Invalidate any request sent
+    // through the dead socket so the first panel instance can recover in place.
+    if(!connected&&!this._portfolio){
+      this._portfolioSeq++;
+      this._loading=true;
+      this._loadFailed=false;
+      this.clearBootstrapRetry();
+    }
     // Home Assistant assigns `hass` for every global state update. Rebuilding the
     // whole Shadow DOM here can replace controls between pointerdown/pointerup and
     // makes text selection/focus unstable. A fixed Investment language is also
     // independent of HA locale updates; HA locale matters only in Auto mode.
-    if(!this._loaded){this._loaded=true; this.loadPortfolio();}
-    else if(languageChanged || (haLocaleChanged&&this._preferredLang==="auto"))this.render();
+    if(!this._loaded){
+      this._loaded=true;
+      if(connected)this.loadPortfolio();
+      else this.safeRender();
+    }else if(connected&&!wasConnected&&!this._portfolio){
+      this._bootstrapRetryAttempt=0;
+      this.clearBootstrapRetry();
+      this.loadPortfolio(true);
+    }else if(languageChanged || (haLocaleChanged&&this._preferredLang==="auto")){
+      this.safeRender();
+    }
   }
   get hass(){return this._hass;}
   connectedCallback(){
@@ -625,7 +646,7 @@ class InvestmentPanel extends HTMLElement {
   }
   disconnectedCallback(){
     if(this._refreshTimer){clearInterval(this._refreshTimer);this._refreshTimer=null;}
-    clearTimeout(this._searchTimer); clearTimeout(this._trendTimer); clearTimeout(this._trendCloseTimer); clearTimeout(this._incognitoRevealTimer);
+    clearTimeout(this._searchTimer); clearTimeout(this._trendTimer); clearTimeout(this._trendCloseTimer); clearTimeout(this._incognitoRevealTimer); this.clearBootstrapRetry();
   }
   t(key){return (this._dict||I18N.en)[key] || I18N.en[key] || key;}
   applyLanguage(language){
@@ -645,6 +666,21 @@ class InvestmentPanel extends HTMLElement {
         new Promise((_,reject)=>{timer=setTimeout(()=>reject(new Error(message)),timeoutMs);})
       ]);
     }finally{if(timer!==null)clearTimeout(timer);}
+  }
+  clearBootstrapRetry(){
+    if(this._bootstrapRetryTimer!==null){clearTimeout(this._bootstrapRetryTimer);this._bootstrapRetryTimer=null;}
+  }
+  scheduleBootstrapRetry(){
+    if(this._portfolio||!this._haConnected||!this.isConnected)return;
+    const delays=[750,1500,3000,5000,8000,12000,15000];
+    if(this._bootstrapRetryAttempt>=delays.length)return;
+    this.clearBootstrapRetry();
+    const delay=delays[this._bootstrapRetryAttempt++];
+    this._bootstrapRetryTimer=setTimeout(()=>{
+      this._bootstrapRetryTimer=null;
+      if(this._portfolio||!this._haConnected||!this.isConnected)return;
+      this.loadPortfolio(true);
+    },delay);
   }
   renderEmergencyError(error){
     const root=this.shadowRoot;if(!root)return;
@@ -673,6 +709,8 @@ class InvestmentPanel extends HTMLElement {
       if(seq!==this._portfolioSeq)return;
       this._portfolio=portfolio;
       this._loadFailed=false;
+      this._bootstrapRetryAttempt=0;
+      this.clearBootstrapRetry();
       this._storedIncognito=!!portfolio?.incognito;
       this._incognitoRevealSeconds=clamp(Math.trunc(Number(portfolio?.incognito_reveal_seconds??5)||0),0,300);
       this._connectionLocal=portfolio?.connection_local===true;
@@ -688,6 +726,7 @@ class InvestmentPanel extends HTMLElement {
       if(seq!==this._portfolioSeq)return;
       this._error=e?.message||String(e);
       this._loadFailed=!this._portfolio;
+      if(this._loadFailed&&this._haConnected)this.scheduleBootstrapRetry();
     }finally{
       if(seq!==this._portfolioSeq)return;
       this._loading=false;
@@ -2181,7 +2220,7 @@ class InvestmentPanel extends HTMLElement {
           <div class="header-actions"><span class="free">${esc(this.t("freeData"))}</span><button class="icon-btn ${this._incognito?"active":""}" id="incognito" title="${esc(this._remotePrivacyDefault&&this._incognito&&!this._storedIncognito?this.t("remotePrivacyDefaultHint"):(this._incognito?this.t("incognitoDisable"):this.t("incognitoEnable")))}" aria-pressed="${this._incognito?"true":"false"}">◉</button><button class="icon-btn" id="refresh" title="${esc(this.t("refresh"))}" aria-label="${esc(this.t("refresh"))}"><span class="refresh-glyph">↻</span></button><button class="icon-btn" id="settings" title="${esc(this.t("settings"))}">⚙</button></div>
         </header>
         ${this._error?`<div class="banner error-banner"><span>${esc(this._error)}</span><button id="dismiss-error">×</button></div>`:""}
-        ${this._loading&&!this._portfolio?`<div class="loading-card">${esc(this.t("loading"))}</div>`:this._loadFailed&&!this._portfolio?`<div class="loading-card load-failed"><strong>${esc(this.t("portfolioLoadFailed"))}</strong><small>${esc(this._error||this.t("portfolioLoadTimeout"))}</small><button id="portfolio-retry" type="button">${esc(this.t("retryPortfolio"))}</button></div>`:`
+        ${this._loading&&!this._portfolio?`<div class="loading-card">${esc(this._haConnected?this.t("loading"):this.t("portfolioWaitingConnection"))}</div>`:this._loadFailed&&!this._portfolio?`<div class="loading-card load-failed"><strong>${esc(this.t("portfolioLoadFailed"))}</strong><small>${esc(this._error||this.t("portfolioLoadTimeout"))}</small><button id="portfolio-retry" type="button">${esc(this.t("retryPortfolio"))}</button></div>`:`
         <section class="hero trend-target ${this.isSelected("portfolio",null)?"selected":""}" data-scope="portfolio" data-scope-id="">
           <div class="hero-primary"><span class="label">${esc(this.t("portfolio"))}</span><div class="hero-value">${this.money(p.total,p.base_currency)}</div><small class="hero-meta">${esc(this.t("history30d"))}${this._dashboardHistoryLoading?` · ${esc(this.t("loading"))}`:""}</small></div>
           <div class="metric visual-metric" data-history-metric="value"><span>${esc(this.t("today"))}</span><strong class="${this.signClass(p.today_change)}">${this.money(p.today_change,p.base_currency)} <small>${this.pct(p.today_pct)}</small></strong>${this.metricMiniChartHtml(dashboard.value,"value",this.signClass(p.today_change))}</div>
