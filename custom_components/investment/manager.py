@@ -55,6 +55,7 @@ from .indication import (
 )
 from .ledger import (
     fifo_summary,
+    holding_provider_balances,
     normalize_shared_allocations,
     normalize_shared_ownership,
     personal_quantity,
@@ -1415,27 +1416,6 @@ class InvestmentManager:
             if isinstance(provider, dict)
         }
 
-        def holding_provider_balances(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
-            balances: dict[str, float] = defaultdict(float)
-            for row in rows:
-                if str(row.get("type") or "buy") != "buy":
-                    continue
-                remaining = max(0.0, float(row.get("remaining_quantity") or 0))
-                if remaining <= 1e-12:
-                    continue
-                provider_id = str(row.get("holding_provider_id") or "")
-                balances[provider_id] += remaining
-            return [
-                {
-                    "id": provider_id,
-                    "name": provider_names.get(provider_id) or None,
-                    "quantity": round(quantity, 12),
-                }
-                for provider_id, quantity in sorted(
-                    balances.items(),
-                    key=lambda item: (provider_names.get(item[0], "").casefold(), item[0]),
-                )
-            ]
 
         if refresh_market:
             # Refresh is user intent to discard stale market views. Do not fetch
@@ -1578,7 +1558,7 @@ class InvestmentManager:
                         "unrealized_pnl_pct": unrealized_pnl_pct,
                         "transaction_count": len(holding.get("transactions") or []),
                         "ledger_rows": ledger.rows,
-                        "holding_provider_balances": holding_provider_balances(ledger.rows),
+                        "holding_provider_balances": holding_provider_balances(ledger.rows, provider_names),
                         "pnl": total_pnl,
                         "pnl_pct": total_pnl_pct,
                         "market_time": quote.market_time,
@@ -1623,7 +1603,7 @@ class InvestmentManager:
                             "unrealized_pnl": None,
                             "transaction_count": len(holding.get("transactions") or []),
                             "ledger_rows": ledger.rows,
-                            "holding_provider_balances": holding_provider_balances(ledger.rows),
+                            "holding_provider_balances": holding_provider_balances(ledger.rows, provider_names),
                         }
                     )
                 except Exception as ledger_err:
