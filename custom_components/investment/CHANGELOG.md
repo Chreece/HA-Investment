@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+- Added canonical lot-based BUY/SELL accounting with exact transaction timestamps, FIFO lot consumption, and separate realized/unrealized P/L.
+- Added holding providers/locations per BUY lot, allowing one asset to remain split across multiple brokers, exchanges, wallets or apps; provider balances are derived from the canonical ledger.
+- Added portfolio analytics for allocation by category, holding provider and trading currency, plus monthly BUY outflow, SELL inflow and net cash flow.
+- Added metric-aware historical presentation across portfolio/category/holding surfaces, including dedicated holding histories for price, units, realized P/L and unrealized P/L.
+- Added compact card visuals and exact ledger timelines so transaction-driven metrics change at the stored event timestamp rather than at an approximated day boundary.
+- Expanded end-to-end regression coverage for transaction accounting, provider balances, history modes and visual contracts.
+- Updated CI to syntax-check every shipped JavaScript file and removed an accidentally tracked backup manifest from the integration package.
+- Refreshed README documentation and repository layout to match the current implementation.
+
 ## 0.2.6
 
 - Fixed transaction-form data loss during the 61-second background portfolio refresh. An open Add Investment dialog is no longer rebuilt by automatic refreshes.
