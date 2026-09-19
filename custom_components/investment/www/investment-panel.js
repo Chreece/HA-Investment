@@ -3027,4 +3027,8 @@ class InvestmentPanel extends HTMLElement {
   `;}
 }
 
-if(!customElements.get("investment-panel-r50")) customElements.define("investment-panel-r50",InvestmentPanel);
+const PANEL_MODULE_REVISION = String(new URL(import.meta.url).searchParams.get("v") || "").trim();
+const PANEL_MODULE_SUFFIX = PANEL_MODULE_REVISION.split("-").at(-1);
+const PANEL_MODULE_ELEMENT_NAME = `investment-panel-${PANEL_MODULE_SUFFIX}`;
+if(!PANEL_MODULE_REVISION || !PANEL_MODULE_SUFFIX) throw new Error("HA Investment panel module revision is missing");
+if(!customElements.get(PANEL_MODULE_ELEMENT_NAME)) customElements.define(PANEL_MODULE_ELEMENT_NAME,InvestmentPanel);
