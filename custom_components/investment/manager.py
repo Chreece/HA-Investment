@@ -570,6 +570,8 @@ class InvestmentManager:
         if original is None:
             raise ValueError("Transaction not found")
         tx_type = str(original.get("type") or "buy")
+        if tx_type != "buy" and holding_provider_id is not None:
+            raise ValueError("Holding provider can only be assigned to BUY transactions")
         tx_date = self._validated_transaction_date(transaction_date) or str(original.get("date") or dt_util.now().date().isoformat())
         base = self._canonical_currency(user.get("base_currency") or "EUR")
         trade_currency = self._canonical_currency(holding.get("currency") or original.get("transaction_currency") or base)
@@ -685,6 +687,8 @@ class InvestmentManager:
             if residual: clean_costs["other"] = round(clean_costs.get("other", 0.0) + residual, 2)
             replacement.update({"quantity": sell_quantity, "sell_price": unit, "gross_sale_total": gross, "proceeds_total": proceeds, "costs": clean_costs, "cost_total": costs})
         else:
+            if normalized_holding_provider_id is not None:
+                replacement["holding_provider_id"] = normalized_holding_provider_id
             quantities = derive_asset_quantities(quantity=quantity, gross_quantity=gross_quantity, net_quantity=net_quantity, asset_fee_quantity=asset_fee_quantity, asset_fee_percent=asset_fee_percent)
             gross, net = quantities.gross, quantities.net
             trade_total = None if gross_trade_total is None else round(max(0.0, float(gross_trade_total)), 2)
@@ -729,12 +733,6 @@ class InvestmentManager:
 
         updated = await self.store.async_replace_transaction(user_id, holding_id, transaction_id, replacement)
         if updated is None: raise ValueError("Transaction not found")
-        if normalized_holding_provider_id is not None:
-            provider_updated = await self.store.async_update_holding(
-                user_id, holding_id, {"holding_provider_id": normalized_holding_provider_id}
-            )
-            if provider_updated is not None:
-                updated = provider_updated
         self._cache.clear_prefix(("portfolio", user_id)); self._cache.clear_prefix(("scope_history", user_id))
         return updated
 
@@ -1295,6 +1293,34 @@ class InvestmentManager:
         base = user.get("base_currency", "EUR")
         holdings = user.get("holdings", [])
         category_expenses = user.get("category_expenses", {}) or {}
+        provider_names = {
+            str(provider.get("id") or ""): str(provider.get("name") or "")
+            for provider in (user.get("holding_providers") or [])
+            if isinstance(provider, dict)
+        }
+
+        def holding_provider_balances(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+            balances: dict[str, float] = defaultdict(float)
+            for row in rows:
+                if str(row.get("type") or "buy") != "buy":
+                    continue
+                remaining = max(0.0, float(row.get("remaining_quantity") or 0))
+                if remaining <= 1e-12:
+                    continue
+                provider_id = str(row.get("holding_provider_id") or "")
+                balances[provider_id] += remaining
+            return [
+                {
+                    "id": provider_id,
+                    "name": provider_names.get(provider_id) or None,
+                    "quantity": round(quantity, 12),
+                }
+                for provider_id, quantity in sorted(
+                    balances.items(),
+                    key=lambda item: (provider_names.get(item[0], "").casefold(), item[0]),
+                )
+            ]
+
         if refresh_market:
             # Refresh is user intent to discard stale market views. Do not fetch
             # chart history eagerly, but invalidate it so the next trend request
@@ -1436,6 +1462,7 @@ class InvestmentManager:
                         "unrealized_pnl_pct": unrealized_pnl_pct,
                         "transaction_count": len(holding.get("transactions") or []),
                         "ledger_rows": ledger.rows,
+                        "holding_provider_balances": holding_provider_balances(ledger.rows),
                         "pnl": total_pnl,
                         "pnl_pct": total_pnl_pct,
                         "market_time": quote.market_time,
@@ -1480,6 +1507,7 @@ class InvestmentManager:
                             "unrealized_pnl": None,
                             "transaction_count": len(holding.get("transactions") or []),
                             "ledger_rows": ledger.rows,
+                            "holding_provider_balances": holding_provider_balances(ledger.rows),
                         }
                     )
                 except Exception as ledger_err:
