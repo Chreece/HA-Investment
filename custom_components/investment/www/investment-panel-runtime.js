@@ -1,6 +1,6 @@
-import "./investment-panel.js?v=0.4.0-r46";
+import "./investment-panel.js?v=0.4.0-r47";
 
-const Panel = customElements.get("investment-panel-r46");
+const Panel = customElements.get("investment-panel-r47");
 if (!Panel) {
   throw new Error("HA Investment base panel failed to register");
 }
