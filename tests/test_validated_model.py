@@ -368,7 +368,7 @@ def test_downward_user_constraints_recheck_risk_after_removing_a_hedge():
     assert meta["post_constraint_risk"]["risk_scale"] < 1.0
 
 
-def test_whole_unit_projection_rechecks_risk_when_flooring_removes_hedge():
+def test_global_whole_lot_projection_preserves_risk_when_discrete_mix_changes():
     a_returns, b_returns = _opposed_weekly_risk_maps()
     candidates = [
         {
@@ -397,10 +397,10 @@ def test_whole_unit_projection_rechecks_risk_when_flooring_removes_hedge():
         for item in projected
         if item["suggested_amount"] > 0
     ]
-    assert projected[1]["suggested_amount"] == 0.0
-    assert projected[0]["suggested_amount"] < 1000.0
+    assert sum(item["suggested_amount"] for item in projected) <= 2000.0
+    assert all(float(item["suggested_units"]).is_integer() for item in projected)
     assert validated.within_risk_target(validated.risk_signature(weights), "very_low")
-    assert meta["post_discrete_risk"]["adjusted"] is True
+    assert meta["whole_unit_discrete_allocator"] == "global_validated_capacity"
 
 
 def test_full_ai_rechecks_risk_when_ai_removes_a_hedge():
@@ -453,3 +453,152 @@ def test_discrete_guard_enforces_budget_as_well_as_risk_and_item_ceilings():
     assert sum(row["suggested_amount"] for row in guarded) <= 10000.0
     assert all(row["suggested_amount"] <= 6000.0 for row in guarded)
     assert meta["adjusted"] is True
+
+
+def _zero_risk_weeks(count=60):
+    return {f"w{i:03d}": 0.0 for i in range(count)}
+
+
+def test_global_whole_lot_projection_uses_collective_validated_capacity():
+    risk = _zero_risk_weeks()
+    candidates = [
+        {
+            "provider": "yahoo", "provider_id": "A", "symbol": "A",
+            "name": "Broad Market ETF A", "category": "etf",
+            "economic_sleeve": "broad_equity", "portfolio_price": 70.0,
+            "market_score": 80.0, "confidence": 0.95,
+            "risk_weekly_returns": risk,
+        },
+        {
+            "provider": "yahoo", "provider_id": "B", "symbol": "B",
+            "name": "Broad Market ETF B", "category": "etf",
+            "economic_sleeve": "broad_equity", "portfolio_price": 80.0,
+            "market_score": 75.0, "confidence": 0.90,
+            "risk_weekly_returns": risk,
+        },
+    ]
+    weighted = [(candidates[0], 0.04), (candidates[1], 0.05)]
+
+    projected, meta = validated.production_projection(
+        candidates,
+        weighted,
+        "medium",
+        1000.0,
+        whole_units_only=True,
+    )
+
+    deployed = sum(item["suggested_amount"] for item in projected)
+    assert 0.0 < deployed <= 90.0
+    assert all(float(item["suggested_units"]).is_integer() for item in projected)
+    assert meta["whole_unit_collective_target"] == 90.0
+    assert meta["whole_unit_deployed"] == deployed
+    assert meta["whole_unit_feasible"] is True
+
+
+def test_global_whole_lot_projection_returns_zero_when_no_lot_fits_collective_capacity():
+    risk = _zero_risk_weeks()
+    candidates = [
+        {
+            "provider": "yahoo", "provider_id": "A", "symbol": "A",
+            "name": "Broad Market ETF A", "category": "etf",
+            "economic_sleeve": "broad_equity", "portfolio_price": 91.0,
+            "market_score": 80.0, "confidence": 0.95,
+            "risk_weekly_returns": risk,
+        },
+        {
+            "provider": "yahoo", "provider_id": "B", "symbol": "B",
+            "name": "Broad Market ETF B", "category": "etf",
+            "economic_sleeve": "broad_equity", "portfolio_price": 95.0,
+            "market_score": 75.0, "confidence": 0.90,
+            "risk_weekly_returns": risk,
+        },
+    ]
+    weighted = [(candidates[0], 0.04), (candidates[1], 0.05)]
+
+    projected, meta = validated.production_projection(
+        candidates,
+        weighted,
+        "medium",
+        1000.0,
+        whole_units_only=True,
+    )
+
+    assert sum(item["suggested_amount"] for item in projected) == 0.0
+    assert meta["whole_unit_collective_target"] == 90.0
+    assert meta["whole_unit_feasible"] is False
+
+
+def test_automatic_candidate_cap_is_soft_for_global_lots_but_explicit_cap_is_hard():
+    risk = _zero_risk_weeks()
+    candidates = [
+        {
+            "provider": "yahoo", "provider_id": "A", "symbol": "A",
+            "name": "Broad Market ETF A", "category": "etf",
+            "economic_sleeve": "broad_equity", "portfolio_price": 80.0,
+            "market_score": 80.0, "confidence": 0.95,
+            "risk_weekly_returns": risk,
+        },
+        {
+            "provider": "yahoo", "provider_id": "B", "symbol": "B",
+            "name": "Broad Market ETF B", "category": "etf",
+            "economic_sleeve": "broad_equity", "portfolio_price": 200.0,
+            "market_score": 70.0, "confidence": 0.90,
+            "risk_weekly_returns": risk,
+        },
+    ]
+    weighted = [(candidates[0], 0.05), (candidates[1], 0.05)]
+
+    soft, soft_meta = validated.production_projection(
+        candidates,
+        weighted,
+        "medium",
+        1000.0,
+        max_candidate_fraction=0.05,
+        max_candidate_fraction_is_hard=False,
+        whole_units_only=True,
+    )
+    hard, hard_meta = validated.production_projection(
+        candidates,
+        weighted,
+        "medium",
+        1000.0,
+        max_candidate_fraction=0.05,
+        max_candidate_fraction_is_hard=True,
+        whole_units_only=True,
+    )
+
+    assert sum(item["suggested_amount"] for item in soft) == 80.0
+    assert soft_meta["whole_unit_auto_lot_override_used"] >= 1
+    assert sum(item["suggested_amount"] for item in hard) == 0.0
+    assert hard_meta["whole_unit_candidate_cap_is_hard"] is True
+
+
+def test_global_whole_lot_projection_never_exceeds_validated_sleeve_total():
+    risk = _zero_risk_weeks()
+    candidates = [
+        {
+            "provider": "yahoo", "provider_id": "A", "symbol": "A",
+            "name": "Broad Market ETF A", "category": "etf",
+            "economic_sleeve": "broad_equity", "portfolio_price": 60.0,
+            "market_score": 85.0, "confidence": 0.95,
+            "risk_weekly_returns": risk,
+        },
+        {
+            "provider": "yahoo", "provider_id": "B", "symbol": "B",
+            "name": "Broad Market ETF B", "category": "etf",
+            "economic_sleeve": "broad_equity", "portfolio_price": 60.0,
+            "market_score": 80.0, "confidence": 0.90,
+            "risk_weekly_returns": risk,
+        },
+    ]
+    weighted = [(candidates[0], 0.06), (candidates[1], 0.06)]
+
+    projected, _ = validated.production_projection(
+        candidates,
+        weighted,
+        "medium",
+        1000.0,
+        whole_units_only=True,
+    )
+
+    assert sum(item["suggested_amount"] for item in projected) <= 120.0
