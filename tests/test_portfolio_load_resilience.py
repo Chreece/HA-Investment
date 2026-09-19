@@ -44,13 +44,15 @@ def test_panel_cannot_remain_on_loading_forever():
     assert "renderEmergencyError(error)" in PANEL
 
 
-def test_first_panel_instance_recovers_after_home_assistant_reconnect():
-    assert "const wasConnected=this._haConnected;" in PANEL
-    assert "const connected=value?.connected!==false;" in PANEL
-    assert "if(!connected&&!this._portfolio){" in PANEL
-    assert "this._portfolioSeq++;" in PANEL
-    assert "else if(connected&&!wasConnected&&!this._portfolio){" in PANEL
+def test_first_panel_instance_recovers_from_actual_websocket_events():
+    assert "connectionReady(connection=this._hass?.connection)" in PANEL
+    assert 'typeof connection.connected==="boolean"' in PANEL
+    assert 'addEventListener("ready",this._handleHaReadyEvent)' in PANEL
+    assert 'addEventListener("disconnected",this._handleHaDisconnectedEvent)' in PANEL
+    assert 'removeEventListener("ready",this._handleHaReadyEvent)' in PANEL
+    assert "handleHaReady(render=true)" in PANEL
+    assert "handleHaDisconnected(render=true)" in PANEL
     assert "this.loadPortfolio(true);" in PANEL
     assert "scheduleBootstrapRetry()" in PANEL
-    assert "this._loadFailed&&this._haConnected" in PANEL
     assert "portfolioWaitingConnection" in PANEL
+    assert "const connected=value?.connected!==false;" not in PANEL
