@@ -14,13 +14,17 @@ A **free, multi-user investment portfolio for Home Assistant**. Search and add s
 - **Stocks, ETFs, funds, crypto, indices, commodities/futures and FX** through a modular provider layer.
 - **Portfolio total + category totals** with today's absolute/percentage movement.
 - **Profit/loss at every level**: per unit, per holding, per category and grand portfolio total.
+- **Lot-based BUY/SELL ledger** with exact transaction timestamps, FIFO cost-basis consumption, and separate realized/unrealized P/L.
+- Assign a **holding provider/location per BUY lot** (broker, exchange, wallet, bank or app). The same asset can be split across multiple providers without duplicating the holding.
 - When adding a purchase, enter either **buy price per unit** or the **total invested amount**; quantity links the two and the missing value is calculated automatically.
 - Record **platform/broker, bank/payment, exchange/network, tax and other transaction costs** separately from the money invested in the asset.
 - Record **asset-denominated fees** when a provider withholds part of the purchased asset: gross quantity, net quantity received, withheld units and fee percentage are linked automatically.
 - Enter either the **total extra costs** or the **total paid including costs**; HA Investment calculates the missing amount and reconciles it with the detailed fee breakdown.
 - Enter a **manual total amount invested per category** when required. Manual category totals override calculated holding principal without double-counting transaction costs.
-- **Hover or tap trends** for individual holdings, category totals and the full portfolio. A clicked/tapped trend stays pinned and selected until closed.
-- Trend periods: **1D, 1W, 1M, 3M, 1Y and 5Y**.
+- **Portfolio analytics** with allocation views by category, holding provider and trading currency, plus monthly buy outflow, sell inflow and net cash flow.
+- **Metric-aware history** for portfolio/category/holding value plus holding price, units, realized P/L and unrealized P/L. Compact card visuals use the appropriate chart style for each metric.
+- **Hover or tap histories** for individual holdings, category totals and the full portfolio. A clicked/tapped history stays pinned and selected until closed.
+- History periods: **1D, 1W, 1M, 3M, 1Y and 5Y** where supported by the selected metric.
 - **Edit quantity directly on each card** with − / numeric input / +.
 - Duplicate additions automatically increase the existing holding instead of creating duplicate cards.
 - Per-user **base currency** with historical FX conversion where available.
@@ -63,10 +67,10 @@ into your Home Assistant configuration's `custom_components` directory, restart 
 ## How it works
 
 1. The panel searches multiple no-key providers through Home Assistant's backend and returns only instruments quoted in the user's selected portfolio currency.
-2. Adding an asset stores only portfolio metadata in Home Assistant's private `.storage` area.
+2. BUY and SELL transactions are stored in Home Assistant's private `.storage` area and reduced through a canonical ledger. BUY lots retain their own provider/location, quantities, quoted price, cash principal, fees and exact timestamp.
 3. Quotes are fetched server-side, cached and converted into the user's selected portfolio currency.
 4. The UI requests only the logged-in user's portfolio through authenticated Home Assistant WebSockets.
-5. Trend requests are lazy: history is downloaded only when a user hovers/taps a portfolio, category or holding surface.
+5. History requests are lazy: market history is downloaded only when a user opens or previews a metric that needs it; ledger-derived histories (for example units or realized P/L) use the stored transaction timeline directly.
 
 ## Portfolio cards
 
@@ -82,6 +86,8 @@ Each holding shows:
 - buy price per unit editor, unit P/L and total holding P/L
 - calculated investment principal, transaction costs and all-in amount spent
 - transaction-cost breakdown when available
+- remaining units grouped by holding provider/location when BUY lots are split across providers
+- compact metric-aware historical visualizations, with detailed price/value/units/realized/unrealized views available from the holding
 - market-data source and delay flag where known
 
 ## Cost basis and profit/loss
@@ -104,6 +110,14 @@ For split-fee receipts, the quoted unit price is descriptive market/trade inform
 
 The Add Investment dialog keeps a live draft of every entered receipt field. Background portfolio polling is paused while the dialog is open, and any unavoidable frontend rerender reconstructs the dialog from that draft rather than from default values. This prevents a long-running entry from silently reverting to quantity `1` or losing its cost basis.
 
+## Transactions, lots and holding providers
+
+Every BUY is preserved as its own lot rather than being flattened into one anonymous quantity. A lot keeps its transaction time, gross/net units, quoted price, actual cash principal, costs, asset-denominated fees and optional **holding provider/location**. This allows one asset to be held simultaneously at multiple brokers, exchanges, wallets or other locations.
+
+SELL transactions are applied through the canonical ledger using FIFO lot consumption. Realized P/L is produced from the consumed lots, while unrealized P/L and remaining provider balances are derived from the lots that are still open. Provider balances are therefore not a second editable source of truth: they come from the transaction ledger and remain consistent after partial sells.
+
+The historical units and realized-P/L series use the exact stored transaction timestamps. Market-price/value series continue to use provider market history, so ledger events and market movements are kept conceptually separate.
+
 Each category also has an optional manual **invested amount** input in the portfolio base currency. When set, that manual category principal becomes authoritative for category and grand-total P/L; transaction costs are still added separately. If principal information is incomplete, P/L is shown as unknown instead of presenting a misleading value.
 
 ## Focus and selection behavior
@@ -115,6 +129,18 @@ The frontend preserves the active input and text selection across its Shadow DOM
 Historical holding values are multiplied by the current stored quantity and converted into the user's portfolio currency. Category and portfolio trends aggregate the constituent holdings with time-bucket forward filling so different market schedules can coexist in one trend.
 
 FX conversion uses historical Frankfurter data where available. If a historical currency series cannot be obtained, the integration falls back to the latest available conversion rate rather than failing the entire chart.
+
+## Portfolio analytics
+
+The dashboard includes a visual analytics area for the current portfolio mix and recent cash activity:
+
+- allocation by **asset category**
+- allocation by **holding provider/location**
+- allocation by **trading currency**
+- monthly **BUY outflow**, **SELL inflow** and **net cash flow**
+- compact 30-day previews on supported cards
+
+Detailed history is metric-aware rather than forcing every value into the same chart. Price/value use continuous market series, units use a step timeline, and realized/unrealized P/L use signed profit/loss presentation so the visual encoding matches what changed.
 
 ## Privacy model
 
@@ -137,10 +163,15 @@ Free market data is not identical to a licensed professional exchange feed. Depe
 ```text
 custom_components/investment/
 ├── __init__.py              # integration + custom panel registration
+├── accounting.py            # cost-basis and P/L helpers
 ├── config_flow.py           # one-instance setup
 ├── const.py
+├── currency.py              # quote/base-currency normalization
+├── ledger.py                # canonical BUY/SELL lots, FIFO and provider balances
 ├── manager.py               # portfolio valuation, aggregation, cache/fallbacks
 ├── models.py
+├── search.py                # provider search coordination
+├── sensor.py                # core integration sensor platform
 ├── storage.py               # private per-user .storage data
 ├── websocket.py             # authenticated panel API
 ├── providers/
@@ -156,7 +187,6 @@ custom_components/investment/
 
 ## Roadmap
 
-- lot-based purchases and realized/unrealized P/L
 - dividends/distributions and cash positions
 - allocation targets and rebalancing views
 - transaction CSV import/export
@@ -169,7 +199,7 @@ custom_components/investment/
 
 ```bash
 python -m compileall custom_components/investment
-node --check custom_components/investment/www/investment-panel.js
+for file in custom_components/investment/www/*.js; do node --check "$file"; done
 ```
 
 GitHub validation workflows for HACS and Hassfest are included.
