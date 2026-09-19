@@ -93,3 +93,13 @@ def test_history_formatter_supports_units_price_and_signed_pnl():
     assert 'if(metric==="quantity")' in PANEL
     assert 'if(metric==="price")return this.price(value,tr?.currency);' in PANEL
     assert '["pnl","realized","unrealized"].includes(metric)' in PANEL
+
+
+def test_period_reload_preserves_popup_position():
+    assert "async loadTrend(scope,id,anchor,period,pointer=null,requestedMetric=null,preservePosition=false)" in PANEL
+    assert "const keepPosition=!!(" in PANEL
+    assert "preservePosition &&" in PANEL
+    assert "let left=keepPosition?Number(previous.left)" in PANEL
+    assert "let top=keepPosition?Number(previous.top)" in PANEL
+    assert "if(!keepPosition){" in PANEL
+    assert "this.loadTrend(tr.scope,tr.id,target,b.dataset.period,null,null,true);" in PANEL
