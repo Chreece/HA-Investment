@@ -42,6 +42,13 @@ SHARED_OWNERSHIP_SCHEMA = vol.Schema(
     }
 )
 
+HOLDING_PROVIDER_SCHEMA = vol.Schema(
+    {
+        vol.Required("id"): vol.All(str, vol.Length(min=1, max=80)),
+        vol.Required("name"): vol.All(str, vol.Length(min=1, max=80)),
+    }
+)
+
 
 def _manager(hass: HomeAssistant):
     data = hass.data.get(DOMAIN)
@@ -325,12 +332,17 @@ async def ws_edit_transaction(hass: HomeAssistant, connection, msg: dict[str, An
         vol.Optional("quantity"): vol.Any(None, vol.Coerce(float)),
         vol.Optional("average_buy_price"): vol.Any(None, vol.Coerce(float)),
         vol.Optional("category"): vol.In(["crypto", "etf", "stock", "fund", "index", "commodity", "fx", "other"]),
+        vol.Optional("holding_provider_id"): vol.All(str, vol.Length(max=80)),
     }
 )
 @websocket_api.async_response
 async def ws_update(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
     try:
-        changes = {k: msg[k] for k in ("quantity", "average_buy_price", "category") if k in msg}
+        changes = {
+            k: msg[k]
+            for k in ("quantity", "average_buy_price", "category", "holding_provider_id")
+            if k in msg
+        }
         holding = await _manager(hass).async_update(_user_id(connection), msg["holding_id"], changes)
         connection.send_result(msg["id"], {"holding": holding})
     except Exception as err:
@@ -359,6 +371,7 @@ async def ws_remove(hass: HomeAssistant, connection, msg: dict[str, Any]) -> Non
             vol.Coerce(int), vol.Range(min=0, max=MAX_INCOGNITO_REVEAL_SECONDS)
         ),
         vol.Optional("exposed_entities"): [vol.In(EXPOSABLE_ENTITY_METRICS)],
+        vol.Optional("holding_providers"): [HOLDING_PROVIDER_SCHEMA],
         # Accept retired indication-only keys only so a cached old main
         # panel becomes a silent no-op instead of surfacing an error.
         vol.Optional("developer_indicator_unlocked"): object,
@@ -373,7 +386,7 @@ async def ws_preferences(hass: HomeAssistant, connection, msg: dict[str, Any]) -
     try:
         preference_keys = {
             "base_currency", "language", "incognito",
-            "incognito_reveal_seconds", "exposed_entities",
+            "incognito_reveal_seconds", "exposed_entities", "holding_providers",
         }
         if not any(key in msg for key in preference_keys):
             # Older cached panels may still send retired preference fields.
@@ -387,6 +400,7 @@ async def ws_preferences(hass: HomeAssistant, connection, msg: dict[str, Any]) -
             incognito=msg.get("incognito"),
             incognito_reveal_seconds=msg.get("incognito_reveal_seconds"),
             exposed_entities=msg.get("exposed_entities"),
+            holding_providers=msg.get("holding_providers"),
         )
         connection.send_result(
             msg["id"],
@@ -398,6 +412,7 @@ async def ws_preferences(hass: HomeAssistant, connection, msg: dict[str, Any]) -
                     user.get("incognito_reveal_seconds", DEFAULT_INCOGNITO_REVEAL_SECONDS)
                 ),
                 "exposed_entities": list(user.get("exposed_entities") or []),
+                "holding_providers": list(user.get("holding_providers") or []),
             },
         )
     except Exception as err:

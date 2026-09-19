@@ -840,6 +840,7 @@ class InvestmentManager:
         incognito: bool | None = None,
         incognito_reveal_seconds: int | None = None,
         exposed_entities: list[str] | None = None,
+        holding_providers: list[dict[str, str]] | None = None,
     ) -> dict[str, Any]:
         """Update private per-user display, privacy and automation preferences."""
         if (
@@ -848,6 +849,7 @@ class InvestmentManager:
             and incognito is None
             and incognito_reveal_seconds is None
             and exposed_entities is None
+            and holding_providers is None
         ):
             raise ValueError("At least one preference is required")
         if base_currency is not None:
@@ -879,6 +881,32 @@ class InvestmentManager:
                 raise ValueError(f"Unsupported automation entity metric: {sorted(unknown)[0]}")
             normalized_exposed = [metric for metric in EXPOSABLE_ENTITY_METRICS if metric in requested]
             previous_exposed = list((await self.store.async_user(user_id)).get("exposed_entities") or [])
+        normalized_holding_providers = None
+        if holding_providers is not None:
+            if not isinstance(holding_providers, list):
+                raise ValueError("Holding providers must be a list")
+            if len(holding_providers) > 100:
+                raise ValueError("A maximum of 100 holding providers is supported")
+            normalized_holding_providers = []
+            seen_ids: set[str] = set()
+            seen_names: set[str] = set()
+            for provider in holding_providers:
+                if not isinstance(provider, dict):
+                    raise ValueError("Each holding provider must contain an id and name")
+                provider_id = str(provider.get("id") or "").strip()
+                provider_name = str(provider.get("name") or "").strip()
+                if not provider_id or len(provider_id) > 80:
+                    raise ValueError("Holding provider id must be between 1 and 80 characters")
+                if not provider_name or len(provider_name) > 80:
+                    raise ValueError("Holding provider name must be between 1 and 80 characters")
+                folded_name = provider_name.casefold()
+                if provider_id in seen_ids:
+                    raise ValueError("Holding provider ids must be unique")
+                if folded_name in seen_names:
+                    raise ValueError("Holding provider names must be unique")
+                seen_ids.add(provider_id)
+                seen_names.add(folded_name)
+                normalized_holding_providers.append({"id": provider_id, "name": provider_name})
         user = await self.store.async_set_preferences(
             user_id,
             base_currency=base_currency,
@@ -886,6 +914,7 @@ class InvestmentManager:
             incognito=incognito,
             incognito_reveal_seconds=normalized_reveal_seconds,
             exposed_entities=normalized_exposed,
+            holding_providers=normalized_holding_providers,
         )
         self._cache.clear_prefix(("portfolio", user_id))
         self._cache.clear_prefix(("scope_history", user_id))
@@ -1639,6 +1668,7 @@ class InvestmentManager:
             "incognito": bool(user.get("incognito", False)),
             "incognito_reveal_seconds": int(user.get("incognito_reveal_seconds", DEFAULT_INCOGNITO_REVEAL_SECONDS)),
             "exposed_entities": list(user.get("exposed_entities") or []),
+            "holding_providers": deepcopy(user.get("holding_providers") or []),
             "total": total,
             "today_change": total_today,
             "today_pct": total_today_pct,
