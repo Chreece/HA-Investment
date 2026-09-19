@@ -37,7 +37,8 @@ def test_pnl_history_has_semantic_zero_reference_and_divergence_fill():
 
 
 def test_cost_and_fee_history_tooltips_snap_to_real_events():
-    assert 'this.trendMetricKind(tr.metric)!=="events"' in PANEL
+    assert 'const deltas=this.trendMetricKind(tr.metric)==="events"?this.trendEventDeltas(win.points):null;' in PANEL
+    assert 'if(deltas&&!(Number(deltas[index]?.value)>1e-12))return;' in PANEL
     assert 'kind==="events"?plottedValue:value' in PANEL
     assert 'Σ ${this.money(value,tr.currency)}' in PANEL
     assert "historyLargestEvent" in PANEL
@@ -46,3 +47,18 @@ def test_cost_and_fee_history_tooltips_snap_to_real_events():
 
 def test_period_reload_preserves_selected_metric():
     assert 'String(this._trend.metric||"value")' in PANEL
+
+
+def test_transaction_metrics_use_exact_ledger_timestamps():
+    assert 'historyTimeBounds(period="1m",marketPoints=[],events=[])' in PANEL
+    assert 'ledgerMetricSeries(events=[],startTs=0,endTs=Math.floor(Date.now()/1000))' in PANEL
+    assert 'Number(sorted[index].sort_ts)<startTs' in PANEL
+    assert 'while(index<sorted.length&&Number(sorted[index].sort_ts)===ts)' in PANEL
+    assert 'push(ts);' in PANEL
+    assert 'this.ledgerMetricSeries(events,bounds.start,bounds.end)[metric]' in PANEL
+
+
+def test_history_chart_and_pointer_use_time_proportional_x_axis():
+    assert '((Number(point.ts)-firstTs)/timeSpan)*(w-padX*2)' in PANEL
+    assert 'targetTs=firstTs+frac*Math.max(1,lastTs-firstTs)' in PANEL
+    assert 'Math.abs(Number(point.ts)-targetTs)' in PANEL
