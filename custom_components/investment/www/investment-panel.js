@@ -679,6 +679,16 @@ class InvestmentPanel extends HTMLElement {
     this._trend=null; this._trendTimer=null; this._trendCloseTimer=null; this._trendPinned=false;
     this._dashboardHistory=null; this._dashboardHistoryLoading=false; this._dashboardHistorySeq=0; this._dashboardHistoryFetchedAt=0; this._allocationMode="category";
     this._hoverTrendDelay=1000; this._hoverMoveTolerance=7; this._hoverIntent=null; this._hoverGeneration=0; this._trendDrag=null;
+    // Home Assistant can assign properties while this tag is still an unknown
+    // element. Those own properties shadow prototype accessors after upgrade.
+    // Re-play hass through the real setter once construction state is ready.
+    this.upgradePredefinedProperty("hass");
+  }
+  upgradePredefinedProperty(name){
+    if(!Object.prototype.hasOwnProperty.call(this,name))return;
+    const value=this[name];
+    delete this[name];
+    this[name]=value;
   }
   set hass(value){
     const wasConnected=this._haConnected;
