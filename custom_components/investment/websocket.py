@@ -336,7 +336,6 @@ async def ws_edit_transaction(hass: HomeAssistant, connection, msg: dict[str, An
         vol.Optional("quantity"): vol.Any(None, vol.Coerce(float)),
         vol.Optional("average_buy_price"): vol.Any(None, vol.Coerce(float)),
         vol.Optional("category"): vol.In(["crypto", "etf", "stock", "fund", "index", "commodity", "fx", "other"]),
-        vol.Optional("holding_provider_id"): vol.All(str, vol.Length(max=80)),
     }
 )
 @websocket_api.async_response
@@ -344,7 +343,7 @@ async def ws_update(hass: HomeAssistant, connection, msg: dict[str, Any]) -> Non
     try:
         changes = {
             k: msg[k]
-            for k in ("quantity", "average_buy_price", "category", "holding_provider_id")
+            for k in ("quantity", "average_buy_price", "category")
             if k in msg
         }
         holding = await _manager(hass).async_update(_user_id(connection), msg["holding_id"], changes)
