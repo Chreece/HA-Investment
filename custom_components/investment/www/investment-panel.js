@@ -1414,13 +1414,6 @@ class InvestmentPanel extends HTMLElement {
     await this.saveHoldingProviders(this.holdingProviders().filter(provider=>String(provider?.id||"")!==String(id)));
   }
 
-  async updateHolding(id, changes){
-    try{await this.call({type:"investment/update",holding_id:id,...changes});await this.loadPortfolio(true);}catch(e){this._error=e?.message||String(e);this.render();}
-  }
-  async removeHolding(id){
-    if(!window.confirm(this.t("confirmRemove"))) return;
-    try{await this.call({type:"investment/remove",holding_id:id});await this.loadPortfolio(true);}catch(e){this._error=e?.message||String(e);this.render();}
-  }
   async changeCurrency(currency){
     try{
       await this.call({type:"investment/set_preferences",base_currency:currency});
