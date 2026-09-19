@@ -303,4 +303,4 @@ def test_region_filter_prefers_compatible_fund_listings():
 
 
 def test_method_identifier_is_current():
-    assert indication.INDICATION_METHOD == "v13_validated_risk_invariant_sleeve_blend"
+    assert indication.INDICATION_METHOD == "v13_validated_risk_invariant_sleeve_blend_global_lots"
