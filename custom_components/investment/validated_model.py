@@ -911,6 +911,294 @@ def _whole_unit_required(
     )
 
 
+def _whole_lot_count_options(max_units: int, target_units: float) -> list[int]:
+    """Return a bounded deterministic set of useful unit counts.
+
+    Small domains are searched exhaustively. Large domains keep exact boundary,
+    target-neighbour and evenly spaced counts so runtime stays bounded without
+    introducing any budget-specific behaviour.
+    """
+    max_units = max(0, int(max_units))
+    if max_units <= 24:
+        return list(range(max_units + 1))
+    options = {0, 1, max_units, max(0, max_units - 1)}
+    base_floor = int(math.floor(max(0.0, target_units)))
+    base_ceil = int(math.ceil(max(0.0, target_units)))
+    for base in (base_floor, base_ceil):
+        for delta in range(-2, 3):
+            options.add(min(max_units, max(0, base + delta)))
+    for step in range(1, 8):
+        options.add(int(round(max_units * step / 8.0)))
+    return sorted(options)
+
+
+def global_whole_lot_projection(
+    projected: list[dict[str, Any]],
+    weighted: Iterable[tuple[dict[str, Any], float]],
+    risk: str,
+    budget: float,
+    *,
+    whole_units_only: bool = False,
+    whole_unit_categories: Iterable[str] | None = None,
+    candidate_cap_cents: int | None = None,
+    candidate_cap_is_hard: bool = False,
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """Redistribute whole lots inside already-validated collective capacity.
+
+    Continuous V13 weights remain the exposure ceiling.  Whole-lot mode may
+    redistribute that capacity between whole-unit candidates because flooring
+    each candidate independently can turn a perfectly feasible discrete
+    portfolio into all-zero output.
+
+    Hard invariants:
+    * total discrete deployment never exceeds the validated continuous total;
+    * every economic sleeve stays at/below its validated continuous total;
+    * an explicit per-candidate cap is never exceeded;
+    * the literal discrete portfolio must still pass the frozen V13 risk target;
+    * if no feasible discrete portfolio exists, zero whole-unit deployment is
+      returned rather than relaxing any safety constraint.
+    """
+    if risk not in RISK_ORDER:
+        raise ValueError(f"Unsupported risk tolerance: {risk}")
+    if budget <= 0:
+        return [dict(item) for item in projected], {
+            "whole_unit_discrete_allocator": "global_validated_capacity",
+            "whole_unit_collective_target": 0.0,
+            "whole_unit_deployed": 0.0,
+            "whole_unit_feasible": False,
+            "whole_unit_search_states": 0,
+            "whole_unit_auto_lot_override_candidates": 0,
+            "whole_unit_auto_lot_override_used": 0,
+        }
+
+    whole_categories = _whole_unit_category_set(whole_unit_categories)
+    rows = [dict(item) for item in projected]
+    weighted_by_key = {
+        _identity(item): max(0.0, _sf(weight))
+        for item, weight in weighted
+        if _sf(weight) > EPS
+    }
+
+    whole_indices: list[int] = []
+    baseline_cents: list[int] = []
+    sleeve_capacity: dict[str, int] = defaultdict(int)
+    whole_total_capacity = 0
+    for index, item in enumerate(rows):
+        amount_cents = int(round(max(0.0, _sf(item.get("suggested_amount"))) * 100.0))
+        baseline_cents.append(amount_cents)
+        require_whole = _whole_unit_required(item, whole_units_only, whole_categories)
+        item["whole_units_only"] = require_whole
+        if not require_whole:
+            continue
+        whole_indices.append(index)
+        sleeve = str(item.get("economic_sleeve") or "unknown")
+        sleeve_capacity[sleeve] += amount_cents
+        whole_total_capacity += amount_cents
+
+    if not whole_indices or whole_total_capacity <= 0:
+        for index in whole_indices:
+            rows[index]["suggested_amount"] = 0.0
+            rows[index]["suggested_units"] = 0.0
+            rows[index]["allocation_weight_validated"] = 0.0
+            rows[index]["allocation_eligible"] = False
+        return rows, {
+            "whole_unit_discrete_allocator": "global_validated_capacity",
+            "whole_unit_collective_target": whole_total_capacity / 100.0,
+            "whole_unit_deployed": 0.0,
+            "whole_unit_feasible": False,
+            "whole_unit_search_states": 1,
+            "whole_unit_auto_lot_override_candidates": 0,
+            "whole_unit_auto_lot_override_used": 0,
+        }
+
+    records: list[dict[str, Any]] = []
+    for index in whole_indices:
+        item = rows[index]
+        price = _sf(item.get("portfolio_price") or item.get("price"))
+        price_cents = int(round(price * 100.0))
+        sleeve = str(item.get("economic_sleeve") or "unknown")
+        if price_cents <= 0:
+            continue
+        max_units = min(
+            whole_total_capacity // price_cents,
+            sleeve_capacity.get(sleeve, 0) // price_cents,
+        )
+        if candidate_cap_is_hard and candidate_cap_cents is not None:
+            max_units = min(max_units, max(0, candidate_cap_cents) // price_cents)
+        if max_units <= 0:
+            continue
+        target_cents = baseline_cents[index]
+        validated_weight = weighted_by_key.get(_identity(item), 0.0)
+        priority = (
+            validated_weight,
+            _sf(item.get("market_score") or item.get("score")),
+            _sf(item.get("confidence")),
+            _symbol(item),
+        )
+        records.append(
+            {
+                "index": index,
+                "price_cents": price_cents,
+                "target_cents": target_cents,
+                "sleeve": sleeve,
+                "max_units": max_units,
+                "priority": priority,
+            }
+        )
+
+    records.sort(key=lambda record: record["priority"], reverse=True)
+    if not records:
+        for index in whole_indices:
+            rows[index]["suggested_amount"] = 0.0
+            rows[index]["suggested_units"] = 0.0
+            rows[index]["allocation_weight_validated"] = 0.0
+            rows[index]["allocation_eligible"] = False
+        return rows, {
+            "whole_unit_discrete_allocator": "global_validated_capacity",
+            "whole_unit_collective_target": whole_total_capacity / 100.0,
+            "whole_unit_deployed": 0.0,
+            "whole_unit_feasible": False,
+            "whole_unit_search_states": 1,
+            "whole_unit_auto_lot_override_candidates": 0,
+            "whole_unit_auto_lot_override_used": 0,
+        }
+
+    sleeves = sorted({record["sleeve"] for record in records})
+    sleeve_index = {sleeve: index for index, sleeve in enumerate(sleeves)}
+    # state = (counts, total_cents, sleeve_totals, deviation, quality)
+    states: list[tuple[tuple[int, ...], int, tuple[int, ...], int, float]] = [
+        ((), 0, tuple(0 for _ in sleeves), 0, 0.0)
+    ]
+    beam_width = 3072
+
+    for record in records:
+        sidx = sleeve_index[record["sleeve"]]
+        target_units = record["target_cents"] / max(1, record["price_cents"])
+        options = _whole_lot_count_options(record["max_units"], target_units)
+        expanded: list[tuple[tuple[int, ...], int, tuple[int, ...], int, float]] = []
+        for counts, total, sleeve_totals, deviation, quality in states:
+            for units in options:
+                amount = units * record["price_cents"]
+                next_total = total + amount
+                if next_total > whole_total_capacity:
+                    continue
+                sleeve_total = sleeve_totals[sidx] + amount
+                if sleeve_total > sleeve_capacity.get(record["sleeve"], 0):
+                    continue
+                next_sleeves = list(sleeve_totals)
+                next_sleeves[sidx] = sleeve_total
+                target = record["target_cents"]
+                next_deviation = deviation + abs(amount - target)
+                weight_priority = max(0.0, float(record["priority"][0]))
+                score_priority = max(0.0, float(record["priority"][1]))
+                confidence_priority = max(0.0, float(record["priority"][2]))
+                next_quality = quality + amount * (
+                    weight_priority * 1000.0
+                    + score_priority
+                    + confidence_priority
+                )
+                expanded.append(
+                    (
+                        counts + (units,),
+                        next_total,
+                        tuple(next_sleeves),
+                        next_deviation,
+                        next_quality,
+                    )
+                )
+
+        # Prefer higher validated deployment, then closer target fit and stronger
+        # validated candidates. Preserve representatives across deployment bands
+        # so risk-feasible lower-deployment combinations are not pruned away.
+        expanded.sort(key=lambda state: (state[1], -state[3], state[4]), reverse=True)
+        selected = expanded[: max(1, beam_width - 900)]
+        bucket_kept: dict[int, int] = defaultdict(int)
+        bucket_size = max(1, whole_total_capacity // 100)
+        for state in expanded:
+            bucket = min(100, state[1] // bucket_size)
+            if bucket_kept[bucket] >= 8:
+                continue
+            selected.append(state)
+            bucket_kept[bucket] += 1
+        dedup: dict[tuple[int, ...], tuple[tuple[int, ...], int, tuple[int, ...], int, float]] = {}
+        for state in selected:
+            dedup.setdefault(state[0], state)
+        states = sorted(
+            dedup.values(),
+            key=lambda state: (state[1], -state[3], state[4]),
+            reverse=True,
+        )[:beam_width]
+
+    # Always retain the all-zero whole-lot state as the conservative fallback.
+    zero_counts = tuple(0 for _ in records)
+    if not any(state[0] == zero_counts for state in states):
+        states.append((zero_counts, 0, tuple(0 for _ in sleeves), whole_total_capacity, 0.0))
+    states.sort(key=lambda state: (state[1], -state[3], state[4]), reverse=True)
+
+    nonwhole_base = [dict(item) for item in rows]
+    for index in whole_indices:
+        nonwhole_base[index]["suggested_amount"] = 0.0
+        nonwhole_base[index]["suggested_units"] = 0.0
+
+    chosen_rows: list[dict[str, Any]] | None = None
+    chosen_state: tuple[tuple[int, ...], int, tuple[int, ...], int, float] | None = None
+    for state in states:
+        counts, _total, _sleeves, _deviation, _quality = state
+        trial = [dict(item) for item in nonwhole_base]
+        for record, units in zip(records, counts, strict=True):
+            amount = units * record["price_cents"] / 100.0
+            item = trial[record["index"]]
+            item["suggested_units"] = float(units)
+            item["suggested_amount"] = round(amount, 2)
+            item["allocation_weight_validated"] = amount / budget
+            item["allocation_eligible"] = amount > 0.0
+
+        weighted_trial = [
+            (item, _sf(item.get("suggested_amount")) / budget)
+            for item in trial
+            if _sf(item.get("suggested_amount")) > EPS
+        ]
+        deployed = sum(_sf(item.get("suggested_amount")) for item in trial)
+        safe = deployed <= EPS or within_risk_target(risk_signature(weighted_trial), risk)
+        if safe:
+            chosen_rows = trial
+            chosen_state = state
+            break
+
+    if chosen_rows is None:
+        chosen_rows = [dict(item) for item in nonwhole_base]
+        chosen_state = (zero_counts, 0, tuple(0 for _ in sleeves), whole_total_capacity, 0.0)
+
+    selected_whole_cents = int(chosen_state[1])
+    override_candidates = 0
+    override_used = 0
+    for record in records:
+        if record["price_cents"] > record["target_cents"]:
+            override_candidates += 1
+    for record, units in zip(records, chosen_state[0], strict=True):
+        if units * record["price_cents"] > record["target_cents"]:
+            override_used += 1
+
+    return chosen_rows, {
+        "whole_unit_discrete_allocator": "global_validated_capacity",
+        "whole_unit_collective_target": whole_total_capacity / 100.0,
+        "whole_unit_deployed": selected_whole_cents / 100.0,
+        "whole_unit_feasible": selected_whole_cents > 0,
+        "whole_unit_search_states": len(states),
+        "whole_unit_auto_lot_override_candidates": (
+            0 if candidate_cap_is_hard else override_candidates
+        ),
+        "whole_unit_auto_lot_override_used": (
+            0 if candidate_cap_is_hard else override_used
+        ),
+        "whole_unit_candidate_cap_is_hard": bool(candidate_cap_is_hard),
+        "whole_unit_residual": round(
+            max(0, whole_total_capacity - selected_whole_cents) / 100.0,
+            2,
+        ),
+    }
+
+
 def enforce_discrete_risk_contract(
     results: list[dict[str, Any]],
     risk: str,
@@ -1047,15 +1335,17 @@ def production_projection(
     budget: float,
     *,
     max_candidate_fraction: float | None = None,
+    max_candidate_fraction_is_hard: bool = True,
     whole_units_only: bool = False,
     whole_unit_categories: Iterable[str] | None = None,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     """Project validated weights to money/lots without exceeding any ceiling."""
     whole_categories = _whole_unit_category_set(whole_unit_categories)
     candidate_rows = [dict(item) for item in candidates]
+    weighted_rows = list(weighted)
     projected, projection = constrained_cent_projection(
         candidate_rows,
-        list(weighted),
+        weighted_rows,
         risk,
         budget,
     )
@@ -1070,30 +1360,32 @@ def production_projection(
             )
         )
 
-    whole_unit_residual = 0.0
     for item in projected:
         amount_cents = int(round(max(0.0, _sf(item.get("suggested_amount"))) * 100.0))
         if cap_cents is not None:
             amount_cents = min(amount_cents, cap_cents)
         amount = amount_cents / 100.0
         price = _sf(item.get("portfolio_price") or item.get("price"))
-        require_whole = _whole_unit_required(item, whole_units_only, whole_categories)
-        if require_whole and price > 0:
-            units = int(math.floor(amount / price + 1e-12))
-            lot_amount = round(units * price, 2)
-            # Floating-price roundoff must never buy a lot above the cent ceiling.
-            while units > 0 and lot_amount > amount + 0.005:
-                units -= 1
-                lot_amount = round(units * price, 2)
-            whole_unit_residual += max(0.0, amount - lot_amount)
-            amount = lot_amount
-            item["suggested_units"] = float(units)
-        else:
-            item["suggested_units"] = amount / price if price > 0 else 0.0
         item["suggested_amount"] = amount
+        item["suggested_units"] = amount / price if price > 0 else 0.0
         item["allocation_weight_validated"] = amount / budget if budget > 0 else 0.0
         item["allocation_eligible"] = amount > 0.0
-        item["whole_units_only"] = require_whole
+        item["whole_units_only"] = _whole_unit_required(
+            item, whole_units_only, whole_categories
+        )
+
+    whole_meta: dict[str, Any] = {}
+    if any(bool(item.get("whole_units_only")) for item in projected):
+        projected, whole_meta = global_whole_lot_projection(
+            projected,
+            weighted_rows,
+            risk,
+            budget,
+            whole_units_only=whole_units_only,
+            whole_unit_categories=whole_categories,
+            candidate_cap_cents=cap_cents,
+            candidate_cap_is_hard=bool(max_candidate_fraction_is_hard),
+        )
 
     projected, discrete_risk = enforce_discrete_risk_contract(
         projected,
@@ -1123,8 +1415,9 @@ def production_projection(
         "deployment_fraction": deployed / budget if budget > 0 else 0.0,
         "whole_units_only": bool(whole_units_only),
         "whole_unit_categories": sorted(whole_categories),
-        "whole_unit_residual": round(whole_unit_residual, 2),
         "candidate_cap_cents": cap_cents,
+        "candidate_cap_is_hard": bool(max_candidate_fraction_is_hard),
+        **whole_meta,
     }
 
 
