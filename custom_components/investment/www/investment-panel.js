@@ -2188,27 +2188,38 @@ class InvestmentPanel extends HTMLElement {
   }
   closeTrend(){this._trendPinned=false;this._trend=null;this.cancelHoverIntent();clearTimeout(this._trendCloseTimer);this.updateTrendUi();}
   isSelected(scope,id){return !!(this._trendPinned&&this._trend&&this._trend.scope===scope&&(this._trend.id||null)===(id||null));}
-  async loadTrend(scope,id,anchor,period,pointer=null,requestedMetric=null){
+  async loadTrend(scope,id,anchor,period,pointer=null,requestedMetric=null,preservePosition=false){
     if(!anchor)return;
     const rect=anchor.getBoundingClientRect();
     const popWidth=Math.min(560,Math.max(300,window.innerWidth-16));
     const popHeight=520;
-    let left=clamp(rect.left,8,Math.max(8,window.innerWidth-popWidth-8));
-    let top=rect.bottom+8;
+    const previous=this._trend;
+    const keepPosition=!!(
+      preservePosition &&
+      previous &&
+      previous.scope===scope &&
+      (previous.id||null)===(id||null) &&
+      Number.isFinite(Number(previous.left)) &&
+      Number.isFinite(Number(previous.top))
+    );
+    let left=keepPosition?Number(previous.left):clamp(rect.left,8,Math.max(8,window.innerWidth-popWidth-8));
+    let top=keepPosition?Number(previous.top):rect.bottom+8;
     const px=Number(pointer?.x),py=Number(pointer?.y),nearPointer=Number.isFinite(px)&&Number.isFinite(py);
-    if(nearPointer&&!this._trendPinned){
-      const gap=14;
-      left=px+gap;
-      if(left+popWidth>window.innerWidth-8)left=px-popWidth-gap;
-      left=clamp(left,8,Math.max(8,window.innerWidth-popWidth-8));
-      top=py+gap;
-      if(top+popHeight>window.innerHeight-8)top=py-popHeight-gap;
-      top=clamp(top,8,Math.max(8,window.innerHeight-popHeight-8));
-    }else if(scope==="portfolio"){
-      left=clamp(rect.right-popWidth,8,Math.max(8,window.innerWidth-popWidth-8));
-      top=clamp(rect.top+10,8,Math.max(8,window.innerHeight-popHeight));
-    }else if(top+popHeight>window.innerHeight){
-      top=Math.max(8,rect.top-popHeight);
+    if(!keepPosition){
+      if(nearPointer&&!this._trendPinned){
+        const gap=14;
+        left=px+gap;
+        if(left+popWidth>window.innerWidth-8)left=px-popWidth-gap;
+        left=clamp(left,8,Math.max(8,window.innerWidth-popWidth-8));
+        top=py+gap;
+        if(top+popHeight>window.innerHeight-8)top=py-popHeight-gap;
+        top=clamp(top,8,Math.max(8,window.innerHeight-popHeight-8));
+      }else if(scope==="portfolio"){
+        left=clamp(rect.right-popWidth,8,Math.max(8,window.innerWidth-popWidth-8));
+        top=clamp(rect.top+10,8,Math.max(8,window.innerHeight-popHeight));
+      }else if(top+popHeight>window.innerHeight){
+        top=Math.max(8,rect.top-popHeight);
+      }
     }
     const allowedMetrics=["value","costBasis","invested","costs","assetFees","pnl"],preserved=this._trend&&this._trend.scope===scope&&(this._trend.id||null)===(id||null)?String(this._trend.metric||"value"):"value";
     const metric=allowedMetrics.includes(String(requestedMetric||""))?String(requestedMetric):preserved;
@@ -3167,7 +3178,7 @@ class InvestmentPanel extends HTMLElement {
     root.querySelectorAll("[data-period]").forEach(b=>b.addEventListener("click",()=>{
       const tr=this._trend;if(!tr)return;
       const target=root.querySelector(`.trend-target[data-scope="${tr.scope}"][data-scope-id="${CSS.escape(tr.id||"")}"]`)||root.querySelector(`.trend-target[data-scope="${tr.scope}"]`);
-      this._trendPinned=true;this.loadTrend(tr.scope,tr.id,target,b.dataset.period);
+      this._trendPinned=true;this.loadTrend(tr.scope,tr.id,target,b.dataset.period,null,null,true);
     }));
     root.querySelector("[data-zoom-in]")?.addEventListener("click",()=>this.setTrendZoom(1));
     root.querySelector("[data-zoom-out]")?.addEventListener("click",()=>this.setTrendZoom(-1));
