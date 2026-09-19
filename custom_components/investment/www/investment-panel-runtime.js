@@ -1,6 +1,13 @@
-import "./investment-panel.js?v=0.4.0-r50";
+const runtimeUrl = new URL(import.meta.url);
+const PANEL_ASSET_REVISION = String(runtimeUrl.searchParams.get("asset_revision") || "").trim();
+if (!PANEL_ASSET_REVISION) {
+  throw new Error("HA Investment panel revision is missing");
+}
+const PANEL_ELEMENT_SUFFIX = PANEL_ASSET_REVISION.split("-").at(-1);
+const PANEL_ELEMENT_NAME = `investment-panel-${PANEL_ELEMENT_SUFFIX}`;
+await import(`./investment-panel.js?v=${encodeURIComponent(PANEL_ASSET_REVISION)}`);
 
-const Panel = customElements.get("investment-panel-r50");
+const Panel = customElements.get(PANEL_ELEMENT_NAME);
 if (!Panel) {
   throw new Error("HA Investment base panel failed to register");
 }
