@@ -158,6 +158,17 @@ Free market data is not identical to a licensed professional exchange feed. Depe
 - lets one source fail without making search completely unusable;
 - does not place trades and never stores brokerage credentials.
 
+## Indications source updater
+
+The `indications` branch includes a Home Assistant **Update** entity for updating the indications implementation itself. This updater intentionally does **not** exist on `master`.
+
+- It checks the `indications` branch automatically every **30 minutes**.
+- To force an immediate source check, run Home Assistant action `homeassistant.update_entity` targeting the HA Investment update entity.
+- A source revision is offered only after the corresponding GitHub **Validate** workflow has completed successfully.
+- Installing the offered update downloads that exact validated revision and replaces only the HA Investment component files.
+- After installation, **restart Home Assistant** so Python/backend changes are loaded by the running process.
+- Diagnostic attributes expose the installed revision, source head revision, latest validated revision, validation state, last check time/error and configured scan interval.
+
 ## Repository layout
 
 ```text
