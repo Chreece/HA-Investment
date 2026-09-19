@@ -15,10 +15,12 @@ def test_holding_provider_is_stored_on_buy_lots_not_holdings():
 
 
 def test_portfolio_exposes_fifo_remaining_units_by_provider():
+    ledger = text("ledger.py")
     manager = text("manager.py")
-    assert "def holding_provider_balances(" in manager
-    assert 'row.get("remaining_quantity")' in manager
-    assert '"holding_provider_balances": holding_provider_balances(ledger.rows)' in manager
+    assert "def holding_provider_balances(" in ledger
+    assert 'row.get("remaining_quantity")' in ledger
+    assert "holding_provider_balances," in manager
+    assert '"holding_provider_balances": holding_provider_balances(ledger.rows, provider_names)' in manager
 
 
 def test_frontend_assigns_provider_per_buy_and_shows_lot_provider():
