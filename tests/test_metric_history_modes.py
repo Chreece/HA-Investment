@@ -22,8 +22,8 @@ def test_history_metrics_are_reconstructed_from_scope_ledger():
 def test_transaction_driven_metrics_use_distinct_history_presentations():
     assert 'if(metric==="costs"||metric==="assetFees")return "events";' in PANEL
     assert 'if(metric==="costBasis"||metric==="invested"||metric==="quantity")return "step";' in PANEL
-    assert 'if(metric==="pnl")return "divergence";' in PANEL
-    assert 'kind==="step"?raw.flatMap' in PANEL
+    assert 'if(metric==="pnl"||metric==="unrealized")return "divergence";' in PANEL
+    assert 'const stepLike=kind==="step"||kind==="divergenceStep";' in PANEL
     assert 'class="trend-event-bar"' in PANEL
     assert "trendEventDeltas(points=[])" in PANEL
 
