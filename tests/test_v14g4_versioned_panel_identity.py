@@ -10,11 +10,11 @@ def test_backend_and_frontend_use_same_versioned_component_identity():
     init = text("__init__.py")
     base = text("www/investment-panel.js")
     runtime = text("www/investment-panel-runtime.js")
-    assert 'PANEL_NAME = "investment-panel-r44"' in const
+    assert 'PANEL_NAME = "investment-panel-r46"' in const
     assert "webcomponent_name=PANEL_NAME" in init
-    assert 'customElements.get("investment-panel-r44")' in base
-    assert 'customElements.define("investment-panel-r44",InvestmentPanel)' in base
-    assert 'const Panel = customElements.get("investment-panel-r44")' in runtime
+    assert 'customElements.get("investment-panel-r46")' in base
+    assert 'customElements.define("investment-panel-r46",InvestmentPanel)' in base
+    assert 'const Panel = customElements.get("investment-panel-r46")' in runtime
 
 def test_legacy_component_identity_cannot_capture_the_v14g4_panel():
     base = text("www/investment-panel.js")
