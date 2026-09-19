@@ -45,3 +45,16 @@ def test_today_and_pnl_use_zero_centered_change_meters():
 def test_card_microcharts_are_compact_and_incognito_compatible():
     assert '.visual-ledger-cell .kpi-spark{height:22px' in PANEL
     assert '.incognito .kpi-spark:not([data-incognito-revealed])' in PANEL
+
+
+def test_holding_cards_expose_units_price_realized_and_unrealized_history_targets():
+    assert 'data-history-metric="quantity"' in PANEL
+    assert 'data-history-metric="price"' in PANEL
+    assert 'data-history-metric="realized"' in PANEL
+    assert 'data-history-metric="unrealized"' in PANEL
+
+
+def test_holding_units_and_realized_pnl_get_local_micro_histories():
+    assert 'metricMiniChartHtml(ledgerSeries.quantity,"quantity","accent")' in PANEL
+    assert 'metricMiniChartHtml(ledgerSeries.realized,"realized",this.signClass(h.realized_pnl))' in PANEL
+    assert 'metric==="realized"?"divergenceStep"' in PANEL
