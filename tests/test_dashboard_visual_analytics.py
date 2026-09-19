@@ -27,3 +27,20 @@ def test_dashboard_visuals_respect_incognito_mode():
 def test_kpi_cards_keep_all_existing_portfolio_metrics_visible():
     for token in ("today_change", "asset_principal", "other_cost_total", "asset_fee_value", "all_in_cost", "pnl"):
         assert token in PANEL
+
+
+def test_dashboard_kpis_use_metric_specific_visual_grammars():
+    assert 'metricMiniChartHtml(points,metric="value",tone="accent")' in PANEL
+    assert 'metric==="costs"||metric==="assetFees"' in PANEL
+    assert 'class="kpi-event-baseline"' in PANEL
+    assert 'metric==="pnl"&&min<=0&&max>=0' in PANEL
+    assert 'kind==="step"?raw.flatMap' in PANEL
+    assert 'data-kpi-chart="${esc(metric)}"' in PANEL
+
+
+def test_summary_metrics_open_the_matching_history_mode_directly():
+    for metric in ("value", "invested", "costs", "assetFees", "costBasis", "pnl"):
+        assert f'data-history-metric="{metric}"' in PANEL
+    assert 'requestedMetric=null' in PANEL
+    assert 'metricEl.dataset.historyMetric' in PANEL
+    assert 'e.target.closest("[data-history-metric]")' in PANEL
