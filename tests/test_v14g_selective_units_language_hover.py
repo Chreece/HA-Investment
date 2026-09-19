@@ -82,9 +82,9 @@ def test_frontend_selective_unit_display_and_empty_state_use_per_item_requiremen
 def test_v14g5_bumps_runtime_asset_revision_and_component_identity():
     const = text("const.py")
     runtime = text("www/investment-panel-runtime.js")
-    assert 'PANEL_ASSET_REVISION = "0.4.0-r42"' in const
-    assert 'investment-panel.js?v=0.4.0-r42' in runtime
-    assert 'PANEL_NAME = "investment-panel-r42"' in const
+    assert 'PANEL_ASSET_REVISION = "0.4.0-r43"' in const
+    assert 'investment-panel.js?v=0.4.0-r43' in runtime
+    assert 'PANEL_NAME = "investment-panel-r43"' in const
 
 
 def test_selective_whole_units_change_literal_output_without_forcing_other_types():
