@@ -2043,37 +2043,81 @@ class InvestmentPanel extends HTMLElement {
     if(metric==="costs"||metric==="assetFees")return "warning";
     return "accent";
   }
+  historyPeriodSeconds(period="1m"){
+    return {"1d":86400,"7d":7*86400,"1m":31*86400,"3m":93*86400,"1y":366*86400,"5y":5*366*86400}[period]||31*86400;
+  }
+  historyTimeBounds(period="1m",marketPoints=[],events=[]){
+    const now=Math.floor(Date.now()/1000),duration=this.historyPeriodSeconds(period);
+    const latestMarket=Math.max(0,...(marketPoints||[]).map(point=>Number(point?.ts)||0));
+    const latestEvent=Math.max(0,...(events||[]).map(row=>Number(row?.sort_ts)||0).filter(ts=>ts<=now));
+    const end=Math.max(now,latestMarket,latestEvent);
+    return {start:Math.max(0,end-duration),end};
+  }
+  newLedgerMetricState(){
+    return {invested:0,costs:0,assetFees:0,costBasis:0,realized:0,costKnown:true};
+  }
+  applyLedgerMetricEvent(state,row){
+    const type=String(row?.type||"buy"),explicit=Number(row?.explicit_costs||0);
+    if(Number.isFinite(explicit))state.costs+=Math.max(0,explicit);
+    if(type==="buy"){
+      const fee=Number(row?.asset_fee_value||0);if(Number.isFinite(fee)){state.assetFees+=Math.max(0,fee);state.costs+=Math.max(0,fee);}
+      const cash=Number(row?.cash_principal),embedded=Number(row?.embedded_asset_fee_cost||0);
+      if(Number.isFinite(cash))state.invested+=Math.max(0,cash-(Number.isFinite(embedded)?Math.max(0,embedded):0));
+      const allIn=Number(row?.all_in_cost);
+      if(Number.isFinite(allIn))state.costBasis+=Math.max(0,allIn);
+      else if(Number.isFinite(cash))state.costBasis+=Math.max(0,cash)+(Number.isFinite(explicit)?Math.max(0,explicit):0);
+      else state.costKnown=false;
+    }else{
+      const allocated=Number(row?.allocated_cost_basis);if(Number.isFinite(allocated))state.costBasis=Math.max(0,state.costBasis-Math.max(0,allocated));else state.costKnown=false;
+      const rowRealized=Number(row?.realized_pnl);if(Number.isFinite(rowRealized))state.realized+=rowRealized;
+    }
+    return state;
+  }
+  ledgerMetricValue(state,metric){
+    if(metric==="invested")return state.invested;
+    if(metric==="costs")return state.costs;
+    if(metric==="assetFees")return state.assetFees;
+    if(metric==="costBasis")return state.costKnown?state.costBasis:null;
+    return null;
+  }
+  ledgerMetricSeries(events=[],startTs=0,endTs=Math.floor(Date.now()/1000)){
+    const sorted=(events||[]).filter(row=>Number.isFinite(Number(row?.sort_ts))).slice().sort((a,b)=>Number(a.sort_ts)-Number(b.sort_ts)||String(a.id||"").localeCompare(String(b.id||"")));
+    const result={invested:[],costs:[],assetFees:[],costBasis:[]};if(!sorted.length)return result;
+    const state=this.newLedgerMetricState(),metrics=Object.keys(result);let index=0;
+    while(index<sorted.length&&Number(sorted[index].sort_ts)<startTs)this.applyLedgerMetricEvent(state,sorted[index++]);
+    const push=ts=>{for(const metric of metrics){const value=this.ledgerMetricValue(state,metric);if(Number.isFinite(Number(value)))result[metric].push({ts:Number(ts),value:Number(value)});}};
+    push(startTs);
+    while(index<sorted.length&&Number(sorted[index].sort_ts)<=endTs){
+      const ts=Number(sorted[index].sort_ts);
+      while(index<sorted.length&&Number(sorted[index].sort_ts)===ts){this.applyLedgerMetricEvent(state,sorted[index]);index++;}
+      push(ts);
+    }
+    if(endTs>startTs)push(endTs);
+    return result;
+  }
+  ledgerStateAtMarketPoints(events=[],marketPoints=[]){
+    const sorted=(events||[]).filter(row=>Number.isFinite(Number(row?.sort_ts))).slice().sort((a,b)=>Number(a.sort_ts)-Number(b.sort_ts)||String(a.id||"").localeCompare(String(b.id||"")));
+    const state=this.newLedgerMetricState(),snapshots=[];let index=0;
+    for(const point of (marketPoints||[])){
+      while(index<sorted.length&&Number(sorted[index].sort_ts)<=Number(point.ts))this.applyLedgerMetricEvent(state,sorted[index++]);
+      snapshots.push({...state});
+    }
+    return snapshots;
+  }
   trendMetricPoints(tr=this._trend){
     const base=(tr?.points||[]).filter(point=>Number.isFinite(Number(point?.value))&&Number.isFinite(Number(point?.ts))).map(point=>({ts:Number(point.ts),value:Number(point.value)})).sort((a,b)=>a.ts-b.ts);
-    const metric=String(tr?.metric||"value");if(metric==="value"||!base.length)return base;
+    const metric=String(tr?.metric||"value");if(metric==="value")return base;
     const events=this.trendScopeLedgerEvents(tr);
-    const out=[];let index=0,invested=0,costs=0,assetFees=0,costBasis=0,realized=0,costKnown=true;
-    const apply=row=>{
-      const type=String(row?.type||"buy"),explicit=Number(row?.explicit_costs||0);
-      if(Number.isFinite(explicit))costs+=Math.max(0,explicit);
-      if(type==="buy"){
-        const fee=Number(row?.asset_fee_value||0);if(Number.isFinite(fee)){assetFees+=Math.max(0,fee);costs+=Math.max(0,fee);}
-        const cash=Number(row?.cash_principal),embedded=Number(row?.embedded_asset_fee_cost||0);
-        if(Number.isFinite(cash))invested+=Math.max(0,cash-(Number.isFinite(embedded)?Math.max(0,embedded):0));
-        const allIn=Number(row?.all_in_cost);
-        if(Number.isFinite(allIn))costBasis+=Math.max(0,allIn);
-        else if(Number.isFinite(cash))costBasis+=Math.max(0,cash)+(Number.isFinite(explicit)?Math.max(0,explicit):0);
-        else costKnown=false;
-      }else{
-        const allocated=Number(row?.allocated_cost_basis);if(Number.isFinite(allocated))costBasis=Math.max(0,costBasis-Math.max(0,allocated));else costKnown=false;
-        const rowRealized=Number(row?.realized_pnl);if(Number.isFinite(rowRealized))realized+=rowRealized;
-      }
-    };
-    for(const point of base){
-      while(index<events.length&&Number(events[index].sort_ts)<=point.ts)apply(events[index++]);
-      let value=null;
-      if(metric==="invested")value=invested;
-      else if(metric==="costs")value=costs;
-      else if(metric==="assetFees")value=assetFees;
-      else if(metric==="costBasis")value=costKnown?costBasis:null;
-      else if(metric==="pnl")value=costKnown?point.value-costBasis+realized:null;
-      if(Number.isFinite(Number(value)))out.push({ts:point.ts,value:Number(value)});
+    if(["invested","costs","assetFees","costBasis"].includes(metric)){
+      const bounds=this.historyTimeBounds(tr?.period||"1m",base,events);
+      return this.ledgerMetricSeries(events,bounds.start,bounds.end)[metric]||[];
     }
+    if(metric!=="pnl"||!base.length)return base;
+    const snapshots=this.ledgerStateAtMarketPoints(events,base),out=[];
+    base.forEach((point,index)=>{
+      const state=snapshots[index],value=state?.costKnown?point.value-state.costBasis+state.realized:null;
+      if(Number.isFinite(Number(value)))out.push({ts:point.ts,value:Number(value)});
+    });
     return out;
   }
   trendWindow(tr=this._trend){
@@ -2119,7 +2163,8 @@ class InvestmentPanel extends HTMLElement {
     const change=first!==0&&Number.isFinite(first)&&Number.isFinite(last)?(last/first-1)*100:null;
     const seriesClass=this.trendMetricTone(tr,last,change);
     const w=520,h=228,padX=10,padY=14;
-    const raw=(kind==="events"?eventSeries:points).map((point,i)=>({x:padX+(i/Math.max(1,points.length-1))*(w-padX*2),y:h-padY-((Number(point.value)-min)/span)*(h-padY*2),value:Number(point.value)}));
+    const firstTs=Number(points[0]?.ts),lastTs=Number(points.at(-1)?.ts),timeSpan=Math.max(1,lastTs-firstTs);
+    const raw=(kind==="events"?eventSeries:points).map(point=>({x:padX+((Number(point.ts)-firstTs)/timeSpan)*(w-padX*2),y:h-padY-((Number(point.value)-min)/span)*(h-padY*2),value:Number(point.value),ts:Number(point.ts)}));
     const firstDate=this.trendDateLabel(points[0]?.ts,tr?.period),lastDate=this.trendDateLabel(points[points.length-1]?.ts,tr?.period);
     const zeroY=h-padY-((0-min)/span)*(h-padY*2);
     let defs=`<linearGradient id="investment-history-area" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="currentColor" stop-opacity=".24"/><stop offset="100%" stop-color="currentColor" stop-opacity=".025"/></linearGradient>`;
@@ -2186,11 +2231,16 @@ class InvestmentPanel extends HTMLElement {
   trendHoverIndex(chart,clientX){
     const tr=this._trend,win=this.trendWindow(tr);if(!tr||win.points.length<1)return null;
     const rect=chart.getBoundingClientRect();if(rect.width<=0)return win.start;
-    const frac=clamp((Number(clientX)-rect.left)/rect.width,0,1),local=Math.round(frac*Math.max(0,win.points.length-1)),rawIndex=win.start+local;
-    if(this.trendMetricKind(tr.metric)!=="events")return rawIndex;
-    const deltas=this.trendEventDeltas(win.points);let nearest=-1,best=Infinity;
-    deltas.forEach((point,index)=>{if(!(point.value>1e-12))return;const distance=Math.abs(index-local);if(distance<best){best=distance;nearest=index;}});
-    return nearest>=0?win.start+nearest:rawIndex;
+    const frac=clamp((Number(clientX)-rect.left)/rect.width,0,1);
+    const firstTs=Number(win.points[0]?.ts),lastTs=Number(win.points.at(-1)?.ts),targetTs=firstTs+frac*Math.max(1,lastTs-firstTs);
+    const deltas=this.trendMetricKind(tr.metric)==="events"?this.trendEventDeltas(win.points):null;
+    let nearest=0,best=Infinity,found=false;
+    win.points.forEach((point,index)=>{
+      if(deltas&&!(Number(deltas[index]?.value)>1e-12))return;
+      const distance=Math.abs(Number(point.ts)-targetTs);if(distance<best){best=distance;nearest=index;found=true;}
+    });
+    if(!found)win.points.forEach((point,index)=>{const distance=Math.abs(Number(point.ts)-targetTs);if(distance<best){best=distance;nearest=index;}});
+    return win.start+nearest;
   }
   showTrendPoint(chart,globalIndex,clientX=null,clientY=null){
     const tr=this._trend;if(!tr||!chart)return;
@@ -2202,7 +2252,8 @@ class InvestmentPanel extends HTMLElement {
     if(kind==="events"){min=0;max=Math.max(0,max);}
     if(kind==="divergence"){min=Math.min(min,0);max=Math.max(max,0);}
     const span=max-min||1,w=Number(chart.dataset.chartWidth)||400,h=Number(chart.dataset.chartHeight)||148,padX=Number(chart.dataset.chartPadX)||8,padY=Number(chart.dataset.chartPadY)||12;
-    const x=padX+(localIndex/Math.max(1,win.points.length-1))*(w-padX*2);
+    const firstTs=Number(win.points[0]?.ts),lastTs=Number(win.points.at(-1)?.ts),timeSpan=Math.max(1,lastTs-firstTs);
+    const x=padX+((Number(point.ts)-firstTs)/timeSpan)*(w-padX*2);
     const plottedValue=kind==="events"?Number(eventSeries[localIndex]?.value||0):Number(point.value),y=h-padY-((plottedValue-min)/span)*(h-padY*2);
     const cross=chart.querySelector("[data-trend-crosshair]"),dot=chart.querySelector("[data-trend-point]"),tip=chart.querySelector("[data-trend-tooltip]");
     if(cross){cross.setAttribute("x1",x);cross.setAttribute("x2",x);cross.setAttribute("visibility","visible");}
@@ -2271,54 +2322,31 @@ class InvestmentPanel extends HTMLElement {
   }
   dashboardSeries(portfolio=this._portfolio){
     const history=(this._dashboardHistory?.points||[]).filter(point=>Number.isFinite(Number(point?.ts))&&Number.isFinite(Number(point?.value))).map(point=>({ts:Number(point.ts),value:Number(point.value)})).sort((a,b)=>a.ts-b.ts);
-    const events=this.dashboardLedgerEvents();
-    const out={value:[],assetPrincipal:[],otherCosts:[],assetFees:[],costBasis:[],pnl:[]};
-    let eventIndex=0,assetPrincipal=0,otherCosts=0,assetFees=0,costBasis=0,realized=0,costKnown=true;
-    const applyEvent=row=>{
-      const type=String(row?.type||"buy");
-      const explicit=Number(row?.explicit_costs||0);
-      if(Number.isFinite(explicit))otherCosts+=Math.max(0,explicit);
-      if(type==="buy"){
-        const fee=Number(row?.asset_fee_value||0);if(Number.isFinite(fee)){assetFees+=Math.max(0,fee);otherCosts+=Math.max(0,fee);}
-        const cash=Number(row?.cash_principal),embedded=Number(row?.embedded_asset_fee_cost||0);
-        if(Number.isFinite(cash))assetPrincipal+=Math.max(0,cash-(Number.isFinite(embedded)?Math.max(0,embedded):0));
-        const allIn=Number(row?.all_in_cost);
-        if(Number.isFinite(allIn))costBasis+=Math.max(0,allIn);
-        else if(Number.isFinite(cash))costBasis+=Math.max(0,cash)+(Number.isFinite(explicit)?Math.max(0,explicit):0);
-        else costKnown=false;
-      }else{
-        const allocated=Number(row?.allocated_cost_basis);
-        if(Number.isFinite(allocated))costBasis=Math.max(0,costBasis-Math.max(0,allocated));
-        else costKnown=false;
-        const rowRealized=Number(row?.realized_pnl);if(Number.isFinite(rowRealized))realized+=rowRealized;
-      }
-    };
-    for(const point of history){
-      while(eventIndex<events.length&&Number(events[eventIndex].sort_ts)<=point.ts)applyEvent(events[eventIndex++]);
-      out.value.push({ts:point.ts,value:point.value});
-      out.assetPrincipal.push({ts:point.ts,value:assetPrincipal});
-      out.otherCosts.push({ts:point.ts,value:otherCosts});
-      out.assetFees.push({ts:point.ts,value:assetFees});
-      out.costBasis.push({ts:point.ts,value:costKnown?costBasis:null});
-      out.pnl.push({ts:point.ts,value:costKnown?point.value-costBasis+realized:null});
-    }
+    const events=this.dashboardLedgerEvents(),bounds=this.historyTimeBounds("1m",history,events),exact=this.ledgerMetricSeries(events,bounds.start,bounds.end);
+    const out={value:[...history],assetPrincipal:exact.invested,otherCosts:exact.costs,assetFees:exact.assetFees,costBasis:exact.costBasis,pnl:[]};
+    const snapshots=this.ledgerStateAtMarketPoints(events,history);
+    history.forEach((point,index)=>{
+      const state=snapshots[index],value=state?.costKnown?point.value-state.costBasis+state.realized:null;
+      if(Number.isFinite(Number(value)))out.pnl.push({ts:point.ts,value:Number(value)});
+    });
     if(portfolio){
-      const ts=Math.max(Number(portfolio.updated_at)||Math.floor(Date.now()/1000),(history.at(-1)?.ts||0)+1);
+      const ts=Math.max(Math.floor(Date.now()/1000),Number(portfolio.updated_at)||0,(history.at(-1)?.ts||0)+1);
       const append=(key,value)=>{if(Number.isFinite(Number(value)))out[key].push({ts,value:Number(value)});};
-      append("value",portfolio.total);append("assetPrincipal",portfolio.asset_principal);append("otherCosts",portfolio.other_cost_total);append("assetFees",portfolio.asset_fee_value);append("costBasis",portfolio.all_in_cost);append("pnl",portfolio.pnl);
+      append("value",portfolio.total);append("pnl",portfolio.pnl);
     }
     return out;
   }
   metricMiniChartHtml(points,metric="value",tone="accent"){
-    const clean=(points||[]).filter(point=>Number.isFinite(Number(point?.value))).slice(-60);
+    const clean=(points||[]).filter(point=>Number.isFinite(Number(point?.value))&&Number.isFinite(Number(point?.ts))).slice(-60);
     if(clean.length<2)return `<div class="kpi-spark empty" data-kpi-chart="${esc(metric)}" aria-hidden="true"></div>`;
-    const values=clean.map(point=>Number(point.value)),w=128,h=38,pad=2;
+    const values=clean.map(point=>Number(point.value)),times=clean.map(point=>Number(point.ts)),firstTs=times[0],lastTs=times.at(-1),timeSpan=Math.max(1,lastTs-firstTs),w=128,h=38,pad=2;
+    const xFor=index=>pad+((times[index]-firstTs)/timeSpan)*(w-pad*2);
     if(metric==="costs"||metric==="assetFees"){
       const deltas=values.map((value,index)=>index===0?0:Math.max(0,value-values[index-1]));
-      const maxDelta=Math.max(0,...deltas),slot=(w-pad*2)/Math.max(1,deltas.length),barWidth=Math.max(1.5,Math.min(5,slot*.58));
+      const maxDelta=Math.max(0,...deltas),barWidth=Math.max(1.5,Math.min(5,(w-pad*2)/Math.max(1,deltas.length)*.58));
       const bars=maxDelta>0?deltas.map((delta,index)=>{
         if(delta<=0)return "";
-        const barHeight=Math.max(1,(delta/maxDelta)*(h-pad*2)),x=pad+index*slot+(slot-barWidth)/2,y=h-pad-barHeight;
+        const barHeight=Math.max(1,(delta/maxDelta)*(h-pad*2)),x=xFor(index)-barWidth/2,y=h-pad-barHeight;
         return `<rect x="${x.toFixed(2)}" y="${y.toFixed(2)}" width="${barWidth.toFixed(2)}" height="${barHeight.toFixed(2)}" rx="1.2"/>`;
       }).join(""):"";
       return `<svg class="kpi-spark kpi-bars ${esc(tone)}" data-kpi-chart="${esc(metric)}" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" aria-hidden="true"><line class="kpi-event-baseline" x1="${pad}" y1="${h-pad}" x2="${w-pad}" y2="${h-pad}"/>${bars}</svg>`;
@@ -2326,7 +2354,7 @@ class InvestmentPanel extends HTMLElement {
     let min=Math.min(...values),max=Math.max(...values);
     if(metric==="pnl"){min=Math.min(min,0);max=Math.max(max,0);}
     const span=max-min||1;
-    const raw=values.map((value,index)=>({x:pad+(index/Math.max(1,values.length-1))*(w-pad*2),y:h-pad-((value-min)/span)*(h-pad*2)}));
+    const raw=values.map((value,index)=>({x:xFor(index),y:h-pad-((value-min)/span)*(h-pad*2)}));
     const kind=(metric==="invested"||metric==="costBasis")?"step":metric==="pnl"?"divergence":"area";
     const draw=kind==="step"?raw.flatMap((point,index)=>index===0?[point]:[{x:point.x,y:raw[index-1].y},point]):raw;
     const coords=draw.map(point=>`${point.x},${point.y}`).join(" ");
