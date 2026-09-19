@@ -47,7 +47,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         hass=hass,
         frontend_url_path=PANEL_URL,
         webcomponent_name=PANEL_NAME,
-        module_url=f"{STATIC_URL}/investment-panel-runtime.js?v={PANEL_ASSET_REVISION}-{runtime_revision}",
+        module_url=f"{STATIC_URL}/investment-panel-v15.js?v={PANEL_ASSET_REVISION}-{runtime_revision}",
         sidebar_title=sidebar_title(hass.config.language),
         sidebar_icon=PANEL_ICON,
         require_admin=False,

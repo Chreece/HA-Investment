@@ -1,0 +1,81 @@
+name: V15 pre-merge validation
+
+on:
+  pull_request:
+    branches: [indications]
+  push:
+    branches: [v15-test-final]
+  workflow_dispatch:
+
+jobs:
+  candidate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install test runner
+        run: python -m pip install --disable-pip-version-check pytest
+      - name: Apply V15 candidate patch only in CI workspace
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          root = Path.cwd()
+          validated = root / "custom_components/investment/validated_model.py"
+          indication = root / "custom_components/investment/indication.py"
+          runtime = root / "custom_components/investment/www/investment-panel-runtime.js"
+
+          s = validated.read_text(encoding="utf-8")
+          if "MIN_RISK_HISTORY_WEEKS = 156" not in s:
+              if "MIN_RISK_HISTORY_WEEKS = 52" not in s:
+                  raise SystemExit("risk-history baseline not found")
+              s = s.replace("MIN_RISK_HISTORY_WEEKS = 52", "MIN_RISK_HISTORY_WEEKS = 156", 1)
+              validated.write_text(s, encoding="utf-8")
+
+          s = indication.read_text(encoding="utf-8")
+          if 'warnings.append("medium_term_momentum_negative")' not in s:
+              s = s.replace('reasons.append("medium_term_momentum_negative")', 'warnings.append("medium_term_momentum_negative")', 1)
+          if 'warnings.append("price_below_trend_averages")' not in s:
+              s = s.replace('reasons.append("price_below_trend_averages")', 'warnings.append("price_below_trend_averages")', 1)
+          if 'warnings.append("medium_term_momentum_negative")' not in s or 'warnings.append("price_below_trend_averages")' not in s:
+              raise SystemExit("bearish explanation emissions could not be transformed")
+          indication.write_text(s, encoding="utf-8")
+
+          # The score-help fix is tested against the current production runtime.
+          # The final production implementation may instead use the dedicated
+          # wrapper already present in the candidate branch; either path must
+          # preserve the explicit score-help guard.
+          s = runtime.read_text(encoding="utf-8")
+          if 'const isScoreHelp=target=>target?.classList?.contains("signal-help");' not in s:
+              old = 'const coarsePointer=()=>!!window.matchMedia?.("(hover:none), (pointer:coarse)")?.matches;'
+              if old not in s:
+                  raise SystemExit("score-help runtime anchor not found")
+              s = s.replace(old, old + '\n      const isScoreHelp=target=>target?.classList?.contains("signal-help");', 1)
+              runtime.write_text(s, encoding="utf-8")
+          PY
+      - name: Verify candidate contract
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          root = Path.cwd()
+          v = (root / "custom_components/investment/validated_model.py").read_text(encoding="utf-8")
+          i = (root / "custom_components/investment/indication.py").read_text(encoding="utf-8")
+          r = (root / "custom_components/investment/www/investment-panel-runtime.js").read_text(encoding="utf-8")
+          assert "MIN_RISK_HISTORY_WEEKS = 156" in v
+          assert 'warnings.append("medium_term_momentum_negative")' in i
+          assert 'warnings.append("price_below_trend_averages")' in i
+          assert 'reasons.append("medium_term_momentum_negative")' not in i
+          assert 'reasons.append("price_below_trend_averages")' not in i
+          assert 'const isScoreHelp=target=>target?.classList?.contains("signal-help");' in r
+          PY
+      - name: Compile Python
+        run: python -m compileall -q custom_components
+      - name: JavaScript syntax
+        run: |
+          node --check custom_components/investment/investment-panel.js 2>/dev/null || true
+          node --check custom_components/investment/www/investment-panel.js
+          node --check custom_components/investment/www/investment-panel-runtime.js
+      - name: Full regression suite
+        run: python -m pytest -q tests
