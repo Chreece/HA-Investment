@@ -94,6 +94,11 @@ from .validated_model import (
 
 _LOGGER = logging.getLogger(__name__)
 
+# A portfolio view must never be held hostage by one slow upstream market source.
+# Provider requests already have their own HTTP timeouts; this is the outer bound
+# for the complete first-pass enrichment so the UI can fall back to stored data.
+_PORTFOLIO_ENRICH_DEADLINE_SECONDS = 30.0
+
 
 class TTLCache:
     def __init__(self) -> None:
@@ -254,8 +259,18 @@ class InvestmentManager:
         if cached is not None:
             rate, rate_date = cached
             return float(rate) * source_scale / target_scale, rate_date
-        rate, rate_date = await self.frankfurter.async_rate(source, target, on_date=on_date)
-        self._cache.set(key, (rate, rate_date))
+        # Multiple holdings can need the same FX leg at once on first load. Limit
+        # concurrency and re-check the cache after acquiring the shared network
+        # semaphore so concurrent cache misses collapse into one HTTP request.
+        async with self._network_sem:
+            cached = self._cache.get(key, 86400 if on_date else 300)
+            if cached is not None:
+                rate, rate_date = cached
+                return float(rate) * source_scale / target_scale, rate_date
+            rate, rate_date = await self.frankfurter.async_rate(
+                source, target, on_date=on_date
+            )
+            self._cache.set(key, (rate, rate_date))
         return float(rate) * source_scale / target_scale, rate_date
 
     async def _resolve_fx_leg(
@@ -1159,9 +1174,19 @@ class InvestmentManager:
             cached = self._cache.get(key, 300)
             if cached is not None:
                 return float(cached) * from_scale / to_scale
-        quote = await self.frankfurter.async_quote(f"{from_currency}/{to_currency}")
-        self._cache.set(key, quote.price)
-        return quote.price * from_scale / to_scale
+        # Only a single current conversion rate is needed here. Frankfurter's
+        # async_quote() also downloads a 7-day history for previous-close data,
+        # which made portfolio startup perform unnecessary extra requests.
+        async with self._network_sem:
+            if not force:
+                cached = self._cache.get(key, 300)
+                if cached is not None:
+                    return float(cached) * from_scale / to_scale
+            rate, _rate_date = await self.frankfurter.async_rate(
+                from_currency, to_currency
+            )
+            self._cache.set(key, rate)
+        return float(rate) * from_scale / to_scale
 
     @staticmethod
     def _canonical_currency(currency: str | None) -> str:
@@ -1611,7 +1636,54 @@ class InvestmentManager:
                 item.update({"status": "error", "error": str(err), "base_currency": base})
             return item
 
-        enriched = await asyncio.gather(*(enrich(h) for h in holdings)) if holdings else []
+        def timed_out_holding(holding: dict[str, Any], error: str) -> dict[str, Any]:
+            """Return a safe stored-data row when live enrichment misses its deadline."""
+            item = deepcopy(holding)
+            item.update(
+                {
+                    "status": "error",
+                    "error": error,
+                    "base_currency": base,
+                    "transaction_count": len(holding.get("transactions") or []),
+                    "ledger_rows": [],
+                    "holding_provider_balances": [],
+                }
+            )
+            return item
+
+        if holdings:
+            tasks = [asyncio.create_task(enrich(holding)) for holding in holdings]
+            done, pending = await asyncio.wait(
+                tasks, timeout=_PORTFOLIO_ENRICH_DEADLINE_SECONDS
+            )
+            if pending:
+                for task in pending:
+                    task.cancel()
+                await asyncio.gather(*pending, return_exceptions=True)
+                _LOGGER.warning(
+                    "Portfolio market enrichment timed out for %s of %s holdings after %.0fs",
+                    len(pending),
+                    len(tasks),
+                    _PORTFOLIO_ENRICH_DEADLINE_SECONDS,
+                )
+
+            enriched = []
+            for holding, task in zip(holdings, tasks, strict=True):
+                if task in done and not task.cancelled():
+                    try:
+                        enriched.append(task.result())
+                        continue
+                    except Exception as err:
+                        enriched.append(timed_out_holding(holding, str(err)))
+                        continue
+                enriched.append(
+                    timed_out_holding(
+                        holding,
+                        "Market-data enrichment timed out; stored holding data is still available.",
+                    )
+                )
+        else:
+            enriched = []
         categories: dict[str, dict[str, Any]] = defaultdict(
             lambda: {
                 "value": 0.0, "today_change": 0.0, "today_current": 0.0,
