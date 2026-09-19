@@ -12,10 +12,18 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
       - name: Install test runner
         run: python -m pip install --disable-pip-version-check pytest
       - name: Compile integration Python
         run: python -m compileall -q custom_components/investment
+      - name: Syntax-check frontend JavaScript
+        run: |
+          for file in custom_components/investment/www/*.js; do
+            node --check "$file"
+          done
       - name: Run pure Python regression tests
         run: python -m pytest -q tests
 
