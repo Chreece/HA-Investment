@@ -2509,4 +2509,4 @@ class InvestmentPanel extends HTMLElement {
   `;}
 }
 
-if(!customElements.get("investment-panel-r36")) customElements.define("investment-panel-r36",InvestmentPanel);
+if(!customElements.get("investment-panel-r37")) customElements.define("investment-panel-r37",InvestmentPanel);
