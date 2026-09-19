@@ -670,7 +670,7 @@ for (const [lang, values] of Object.entries(SOURCE_UPDATE_I18N)) Object.assign(I
 class InvestmentPanel extends HTMLElement {
   constructor(){
     super(); this.attachShadow({mode:"open"});
-    this._hass=null; this._loaded=false; this._loading=true; this._loadFailed=false; this._portfolio=null; this._haConnected=false; this._bootstrapRetryTimer=null; this._bootstrapRetryAttempt=0;
+    this._hass=null; this._loaded=false; this._loading=true; this._loadFailed=false; this._portfolio=null; this._haConnected=false; this._haConnection=null; this._bootstrapRetryTimer=null; this._bootstrapRetryAttempt=0;
     this._search=""; this._searchCurrency=null; this._searching=false; this._results=[]; this._searchTimer=null; this._searchSeq=0; this._searchActive=false; this._searchHover=false;
     this._settings=false; this._incognito=false; this._storedIncognito=false; this._connectionLocal=true; this._remotePrivacyDefault=false; this._incognitoSessionOverride=null; this._incognitoRevealSeconds=5; this._incognitoRevealElement=null; this._incognitoRevealNodes=[]; this._incognitoRevealTimer=null; this._addDraft=null; this._adding=false; this._portfolioSeq=0; this._portfolioRenderDeferred=false; this._expanded=new Set(); this._expandedCategories=new Set(); this._expandedLedgers=new Set(); this._error=""; this._haLang="en"; this._preferredLang="auto"; this._lang=null; this._rootPointerBound=false;
     this._developerIndicatorUnlocked=false; this._indicatorUnlockPresses=0; this._indicatorUnlocking=false;
@@ -683,7 +683,10 @@ class InvestmentPanel extends HTMLElement {
   set hass(value){
     const wasConnected=this._haConnected;
     this._hass=value;
-    const connected=value?.connected!==false;
+    this.bindHaConnection(value?.connection);
+    // The Connection.connected getter reflects the actual socket. It can already
+    // be true while a custom panel still holds an older hass.connected snapshot.
+    const connected=this.connectionReady(value?.connection);
     this._haConnected=connected;
     const sourceUpdateSignature=this.sourceUpdateSignature(value);
     const sourceUpdateChanged=this._sourceUpdateSignature!==sourceUpdateSignature;
@@ -692,15 +695,7 @@ class InvestmentPanel extends HTMLElement {
     const haLocaleChanged=this._haLang!==haLang;
     this._haLang=haLang;
     const languageChanged=this.applyLanguage(this._preferredLang==="auto"?this._haLang:this._preferredLang);
-    // Home Assistant flips hass.connected false while its websocket is down and
-    // back to true on the connection "ready" event. Invalidate any request sent
-    // through the dead socket so the first panel instance can recover in place.
-    if(!connected&&!this._portfolio){
-      this._portfolioSeq++;
-      this._loading=true;
-      this._loadFailed=false;
-      this.clearBootstrapRetry();
-    }
+    if(!connected&&!this._portfolio)this.handleHaDisconnected(false);
     // Home Assistant assigns `hass` for every global state update. Rebuilding the
     // whole Shadow DOM here can replace controls between pointerdown/pointerup and
     // makes text selection/focus unstable. A fixed Investment language is also
@@ -710,15 +705,15 @@ class InvestmentPanel extends HTMLElement {
       if(connected)this.loadPortfolio();
       else this.safeRender();
     }else if(connected&&!wasConnected&&!this._portfolio){
-      this._bootstrapRetryAttempt=0;
-      this.clearBootstrapRetry();
-      this.loadPortfolio(true);
+      this.handleHaReady(false);
     }else if(languageChanged || (haLocaleChanged&&this._preferredLang==="auto") || (sourceUpdateChanged&&this._settings)){
       this.safeRender();
     }
   }
   get hass(){return this._hass;}
   connectedCallback(){
+    this.bindHaConnection(this._hass?.connection);
+    this._haConnected=this.connectionReady();
     this.render();
     if(!this._refreshTimer){
       this._refreshTimer=setInterval(()=>{if(!document.hidden && this._hass && !this._addDraft && !this._adding && !this._indicationOpen && !this._settings)this.loadPortfolio(false);},61000);
@@ -726,7 +721,7 @@ class InvestmentPanel extends HTMLElement {
   }
   disconnectedCallback(){
     if(this._refreshTimer){clearInterval(this._refreshTimer);this._refreshTimer=null;}
-    clearTimeout(this._searchTimer); clearTimeout(this._trendTimer); clearTimeout(this._trendCloseTimer); clearTimeout(this._indicationPersistTimer); clearTimeout(this._incognitoRevealTimer); this.clearBootstrapRetry();
+    clearTimeout(this._searchTimer); clearTimeout(this._trendTimer); clearTimeout(this._trendCloseTimer); clearTimeout(this._indicationPersistTimer); clearTimeout(this._incognitoRevealTimer); this.clearBootstrapRetry(); this.unbindHaConnection();
   }
   t(key){return (this._dict||I18N.en)[key] || I18N.en[key] || key;}
   applyLanguage(language){
@@ -738,6 +733,44 @@ class InvestmentPanel extends HTMLElement {
   }
   displayLocale(){return this._lang||this._haLang||undefined;}
   async call(msg){if(!this._hass) throw new Error("Home Assistant not ready"); return this._hass.connection.sendMessagePromise(msg);}
+  connectionReady(connection=this._hass?.connection){
+    if(connection&&typeof connection.connected==="boolean")return connection.connected;
+    return this._hass?.connected!==false;
+  }
+  bindHaConnection(connection){
+    if(this._haConnection===connection)return;
+    this.unbindHaConnection();
+    this._haConnection=connection||null;
+    if(!this._haConnection?.addEventListener)return;
+    this._haConnection.addEventListener("ready",this._handleHaReadyEvent);
+    this._haConnection.addEventListener("disconnected",this._handleHaDisconnectedEvent);
+  }
+  unbindHaConnection(){
+    if(this._haConnection?.removeEventListener){
+      this._haConnection.removeEventListener("ready",this._handleHaReadyEvent);
+      this._haConnection.removeEventListener("disconnected",this._handleHaDisconnectedEvent);
+    }
+    this._haConnection=null;
+  }
+  _handleHaReadyEvent=()=>this.handleHaReady(true);
+  _handleHaDisconnectedEvent=()=>this.handleHaDisconnected(true);
+  handleHaReady(render=true){
+    this._haConnected=true;
+    if(this._portfolio||!this.isConnected)return;
+    this._bootstrapRetryAttempt=0;
+    this.clearBootstrapRetry();
+    this.loadPortfolio(true);
+    if(render&&!this._portfolio)this.safeRender();
+  }
+  handleHaDisconnected(render=true){
+    this._haConnected=false;
+    if(this._portfolio)return;
+    this._portfolioSeq++;
+    this._loading=true;
+    this._loadFailed=false;
+    this.clearBootstrapRetry();
+    if(render&&this.isConnected)this.safeRender();
+  }
   async withTimeout(promise,timeoutMs,message){
     let timer=null;
     try{
