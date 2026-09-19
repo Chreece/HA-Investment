@@ -969,6 +969,8 @@ def global_whole_lot_projection(
             "whole_unit_search_states": 0,
             "whole_unit_auto_lot_override_candidates": 0,
             "whole_unit_auto_lot_override_used": 0,
+            "whole_unit_candidate_cap_is_hard": bool(candidate_cap_is_hard),
+            "whole_unit_residual": 0.0,
         }
 
     whole_categories = _whole_unit_category_set(whole_unit_categories)
@@ -1009,6 +1011,8 @@ def global_whole_lot_projection(
             "whole_unit_search_states": 1,
             "whole_unit_auto_lot_override_candidates": 0,
             "whole_unit_auto_lot_override_used": 0,
+            "whole_unit_candidate_cap_is_hard": bool(candidate_cap_is_hard),
+            "whole_unit_residual": 0.0,
         }
 
     records: list[dict[str, Any]] = []
@@ -1061,6 +1065,8 @@ def global_whole_lot_projection(
             "whole_unit_search_states": 1,
             "whole_unit_auto_lot_override_candidates": 0,
             "whole_unit_auto_lot_override_used": 0,
+            "whole_unit_candidate_cap_is_hard": bool(candidate_cap_is_hard),
+            "whole_unit_residual": 0.0,
         }
 
     sleeves = sorted({record["sleeve"] for record in records})
