@@ -29,3 +29,13 @@ def test_frontend_assigns_provider_per_buy_and_shows_lot_provider():
     assert "holding_provider_balances" in panel
     assert "data-holding-provider-select" not in panel
     assert "data-expand=" not in panel
+
+
+def test_trend_preview_values_are_pointer_near_and_interactive():
+    panel = text("www/investment-panel.js")
+    assert ".trend-pop.preview{pointer-events:auto}" in panel
+    assert "data-trend-tooltip-change" in panel
+    assert "showTrendPoint(chart,globalIndex,clientX=null,clientY=null)" in panel
+    assert "loadTrend(scope,id,anchor,period,{x:intent.x,y:intent.y})" in panel
+    assert "},260);" in panel
+    assert 'if(this._trendPinned||e.target.closest("button"))return;' in panel
