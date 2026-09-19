@@ -86,3 +86,19 @@ def test_initial_panel_uses_network_free_bootstrap_before_market_refresh():
 
 def test_bootstrap_unknown_values_are_not_misrepresented_as_zero_history():
     assert "value!==null&&value!==undefined&&Number.isFinite(Number(value))" in PANEL
+
+
+def test_pre_upgrade_hass_property_is_replayed_through_setter():
+    # HA can assign .hass to an unknown element before the custom element class
+    # is registered. The own property would then shadow the prototype setter.
+    assert 'this.upgradePredefinedProperty("hass");' in PANEL
+    assert "upgradePredefinedProperty(name){" in PANEL
+    assert "Object.prototype.hasOwnProperty.call(this,name)" in PANEL
+    assert "const value=this[name];" in PANEL
+    assert "delete this[name];" in PANEL
+    assert "this[name]=value;" in PANEL
+
+    constructor_start = PANEL.index("  constructor(){")
+    replay = PANEL.index('this.upgradePredefinedProperty("hass");', constructor_start)
+    setter = PANEL.index("  set hass(value){", replay)
+    assert constructor_start < replay < setter
