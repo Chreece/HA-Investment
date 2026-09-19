@@ -37,7 +37,8 @@ def test_pnl_history_has_semantic_zero_reference_and_divergence_fill():
 
 
 def test_cost_and_fee_history_tooltips_snap_to_real_events():
-    assert 'this.trendMetricKind(tr.metric)!=="events"' in PANEL
+    assert 'const deltas=this.trendMetricKind(tr.metric)==="events"?this.trendEventDeltas(win.points):null;' in PANEL
+    assert 'if(deltas&&!(Number(deltas[index]?.value)>1e-12))return;' in PANEL
     assert 'kind==="events"?plottedValue:value' in PANEL
     assert 'Σ ${this.money(value,tr.currency)}' in PANEL
     assert "historyLargestEvent" in PANEL
