@@ -9,8 +9,8 @@ def text(path: str) -> str:
 
 def test_v14g5_runtime_bootstrap_is_synchronous_and_desktop_safe():
     panel = text("www/investment-panel-runtime.js")
-    assert 'import "./investment-panel.js?v=0.4.0-r36";' in panel
-    assert 'const Panel = customElements.get("investment-panel-r36")' in panel
+    assert 'import "./investment-panel.js?v=0.4.0-r38";' in panel
+    assert 'const Panel = customElements.get("investment-panel-r38")' in panel
     assert 'await import(' not in panel
     assert 'customElements.whenDefined' not in panel
     assert '__investmentV14g5Runtime' in panel
@@ -18,7 +18,7 @@ def test_v14g5_runtime_bootstrap_is_synchronous_and_desktop_safe():
 
 def test_base_panel_uses_fresh_versioned_custom_element_for_mobile_webview_upgrade():
     panel = text("www/investment-panel.js")
-    assert 'if(!customElements.get("investment-panel-r36")) customElements.define("investment-panel-r36",InvestmentPanel);' in panel
+    assert 'if(!customElements.get("investment-panel-r38")) customElements.define("investment-panel-r38",InvestmentPanel);' in panel
 
 
 def test_v14g2_base_panel_natively_renders_selective_whole_unit_multiselect():
@@ -55,6 +55,6 @@ def test_v14g2_help_taps_prevent_label_default_and_old_runtime_listener_duplicat
 def test_v14g5_frontend_revision_and_component_identity_are_bumped():
     const = text("const.py")
     runtime = text("www/investment-panel-runtime.js")
-    assert 'PANEL_ASSET_REVISION = "0.4.0-r36"' in const
-    assert 'investment-panel.js?v=0.4.0-r36' in runtime
-    assert 'PANEL_NAME = "investment-panel-r36"' in const
+    assert 'PANEL_ASSET_REVISION = "0.4.0-r38"' in const
+    assert 'investment-panel.js?v=0.4.0-r38' in runtime
+    assert 'PANEL_NAME = "investment-panel-r38"' in const
