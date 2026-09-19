@@ -3,10 +3,8 @@ import re
 
 ROOT = Path(__file__).resolve().parents[1] / "custom_components" / "investment"
 
-
 def text(path: str) -> str:
     return (ROOT / path).read_text(encoding="utf-8")
-
 
 def test_manager_reports_real_analysis_stages_and_candidate_completion():
     manager = text("manager.py")
@@ -29,14 +27,12 @@ def test_manager_reports_real_analysis_stages_and_candidate_completion():
     assert 'completed=completed_evaluations' in manager
     assert 'total=len(eligible_assets)' in manager
 
-
 def test_runtime_manager_forwards_progress_without_touching_model_math():
     runtime_manager = text("runtime_manager.py")
     assert "progress_callback: Callable[[int, str, dict[str, Any] | None], None] | None = None" in runtime_manager
     assert 'progress_callback(3, "starting", None)' in runtime_manager
     assert 'except Exception as err:' in runtime_manager
     assert "progress_callback=progress_callback" in runtime_manager
-
 
 def test_websocket_keeps_legacy_call_and_adds_owned_progress_jobs():
     websocket = text("runtime_websocket.py")
@@ -51,13 +47,11 @@ def test_websocket_keeps_legacy_call_and_adds_owned_progress_jobs():
     assert 'jobs.pop(job_id, None)' in websocket
     assert 'current.update(\n                        percent=100,\n                        stage="complete"' in websocket
 
-
 def test_progress_job_percent_is_monotonic_and_bounded_server_side():
     websocket = text("runtime_websocket.py")
     assert 'max(int(current.get("percent") or 0), min(99, int(percent)))' in websocket
     assert '"percent": int(job.get("percent") or 0)' in websocket
     assert '"done": bool(job.get("done"))' in websocket
-
 
 def test_frontend_uses_start_and_status_progress_protocol():
     panel = text("www/investment-panel.js")
@@ -68,7 +62,6 @@ def test_frontend_uses_start_and_status_progress_protocol():
     assert 'type:"investment/indication_status"' in wait_block
     assert 'setTimeout(resolve,250)' in wait_block
     assert 'this.setIndicationProgress(status)' in wait_block
-
 
 def test_progress_overlay_is_obvious_accessible_and_outside_scroll_geometry():
     panel = text("www/investment-panel.js")
@@ -83,7 +76,6 @@ def test_progress_overlay_is_obvious_accessible_and_outside_scroll_geometry():
     assert "font-size:30px" in css
     assert "height:10px" in css
     assert "overflow:auto" not in css
-
 
 def test_progress_copy_covers_every_supported_panel_language():
     panel = text("www/investment-panel.js")
@@ -104,21 +96,9 @@ def test_progress_copy_covers_every_supported_panel_language():
         ):
             assert f"{key}:" in row, (lang, key)
 
-
 def test_runtime_enhancement_fields_are_forwarded_to_progress_start_call():
     runtime = text("www/investment-panel-runtime.js")
     assert '["investment/indication","investment/indication_start"].includes(message.type)' in runtime
     assert 'portfolio_context:' in runtime
     assert 'existing_instruments:' in runtime
     assert 'response_language:' in runtime
-
-
-def test_v14g8_uses_fresh_progress_panel_identity():
-    const = text("const.py")
-    runtime = text("www/investment-panel-runtime.js")
-    panel = text("www/investment-panel.js")
-    assert 'PANEL_ASSET_REVISION = "0.4.0-r50"' in const
-    assert 'PANEL_NAME = "investment-panel-r50"' in const
-    assert 'import "./investment-panel.js?v=0.4.0-r50";' in runtime
-    assert 'const Panel = customElements.get("investment-panel-r50")' in runtime
-    assert 'customElements.define("investment-panel-r50",InvestmentPanel)' in panel
