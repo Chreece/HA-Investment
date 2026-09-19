@@ -92,3 +92,10 @@ def test_ai_text_only_review_falls_back_to_conservative_caution_without_touching
     body = _indication_body()
     assert "ai_review = await self._ai_indication_review(" in body
     assert "clamp_ai_ranking_to_deterministic(" in body
+
+
+def test_runtime_marks_only_manual_candidate_cap_as_hard_for_whole_lots():
+    body = _indication_body()
+    assert "max_candidate_fraction=effective_max_candidate_fraction" in body
+    assert "max_candidate_fraction_is_hard=max_candidate_pct is not None" in body
+    assert '"construction": "v13_validated_global_discrete_lot_projection"' in body
