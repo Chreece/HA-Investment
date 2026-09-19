@@ -1695,12 +1695,13 @@ class InvestmentPanel extends HTMLElement {
     return events.sort((a,b)=>Number(a.sort_ts)-Number(b.sort_ts)||String(a.id||"").localeCompare(String(b.id||"")));
   }
   trendMetricLabel(metric=this._trend?.metric){
-    return metric==="costBasis"?this.t("currentCostBasis"):metric==="invested"?this.t("principalSpent"):metric==="costs"?this.t("otherCosts"):metric==="assetFees"?this.t("assetFees"):metric==="pnl"?this.t("totalPnl"):this.t("value");
+    return metric==="costBasis"?this.t("currentCostBasis"):metric==="invested"?this.t("principalSpent"):metric==="costs"?this.t("otherCosts"):metric==="assetFees"?this.t("assetFees"):metric==="quantity"?this.t("currentUnits"):metric==="price"?this.t("price"):metric==="realized"?this.t("realizedPnl"):metric==="unrealized"?this.t("unrealizedPnl"):metric==="pnl"?this.t("totalPnl"):this.t("value");
   }
   trendMetricKind(metric=this._trend?.metric){
     if(metric==="costs"||metric==="assetFees")return "events";
-    if(metric==="costBasis"||metric==="invested")return "step";
-    if(metric==="pnl")return "divergence";
+    if(metric==="realized")return "divergenceStep";
+    if(metric==="costBasis"||metric==="invested"||metric==="quantity")return "step";
+    if(metric==="pnl"||metric==="unrealized")return "divergence";
     return "area";
   }
   trendEventDeltas(points=[]){
@@ -1712,10 +1713,30 @@ class InvestmentPanel extends HTMLElement {
   }
   trendMetricTone(tr,value=null,change=null){
     const metric=String(tr?.metric||"value");
-    if(metric==="pnl")return this.signClass(value);
-    if(metric==="value")return this.signClass(change);
+    if(["pnl","realized","unrealized"].includes(metric))return this.signClass(value);
+    if(metric==="value"||metric==="price")return this.signClass(change);
     if(metric==="costs"||metric==="assetFees")return "warning";
     return "accent";
+  }
+  trendSupportedMetrics(tr=this._trend){
+    const base=[["value",this.t("value")],["costBasis",this.t("currentCostBasis")],["invested",this.t("principalSpent")],["costs",this.t("otherCosts")],["assetFees",this.t("assetFees")],["pnl",this.t("totalPnl")]];
+    if(tr?.scope!=="holding")return base;
+    return [["value",this.t("value")],["price",this.t("price")],["quantity",this.t("currentUnits")],["costBasis",this.t("currentCostBasis")],["invested",this.t("principalSpent")],["costs",this.t("otherCosts")],["assetFees",this.t("assetFees")],["realized",this.t("realizedPnl")],["unrealized",this.t("unrealizedPnl")],["pnl",this.t("totalPnl")]];
+  }
+  trendMetricUnit(tr=this._trend){
+    if(String(tr?.metric||"")!=="quantity"||tr?.scope!=="holding")return "";
+    const holding=(this._portfolio?.holdings||[]).find(item=>String(item.id)===String(tr.id));
+    return this.assetUnit(holding);
+  }
+  trendMetricFormat(value,tr=this._trend){
+    if(value===null||value===undefined||!Number.isFinite(Number(value)))return "—";
+    const metric=String(tr?.metric||"value");
+    if(metric==="quantity"){const unit=this.trendMetricUnit(tr);return `${this.num(value)}${unit?` ${unit}`:""}`;}
+    if(metric==="price")return this.price(value,tr?.currency);
+    return this.money(value,tr?.currency);
+  }
+  trendMetricPercentMeaningful(metric=this._trend?.metric){
+    return ["value","price","quantity","costBasis","invested"].includes(String(metric||"value"));
   }
   historyPeriodSeconds(period="1m"){
     return {"1d":86400,"7d":7*86400,"1m":31*86400,"3m":93*86400,"1y":366*86400,"5y":5*366*86400}[period]||31*86400;
@@ -1728,12 +1749,13 @@ class InvestmentPanel extends HTMLElement {
     return {start:Math.max(0,end-duration),end};
   }
   newLedgerMetricState(){
-    return {invested:0,costs:0,assetFees:0,costBasis:0,realized:0,costKnown:true};
+    return {invested:0,costs:0,assetFees:0,costBasis:0,realized:0,quantity:0,costKnown:true};
   }
   applyLedgerMetricEvent(state,row){
     const type=String(row?.type||"buy"),explicit=Number(row?.explicit_costs||0);
     if(Number.isFinite(explicit))state.costs+=Math.max(0,explicit);
     if(type==="buy"){
+      const qty=Number(row?.quantity||0);if(Number.isFinite(qty))state.quantity+=Math.max(0,qty);
       const fee=Number(row?.asset_fee_value||0);if(Number.isFinite(fee)){state.assetFees+=Math.max(0,fee);state.costs+=Math.max(0,fee);}
       const cash=Number(row?.cash_principal),embedded=Number(row?.embedded_asset_fee_cost||0);
       if(Number.isFinite(cash))state.invested+=Math.max(0,cash-(Number.isFinite(embedded)?Math.max(0,embedded):0));
@@ -1742,6 +1764,7 @@ class InvestmentPanel extends HTMLElement {
       else if(Number.isFinite(cash))state.costBasis+=Math.max(0,cash)+(Number.isFinite(explicit)?Math.max(0,explicit):0);
       else state.costKnown=false;
     }else{
+      const qty=Number(row?.quantity||0);if(Number.isFinite(qty))state.quantity=Math.max(0,state.quantity-Math.max(0,qty));
       const allocated=Number(row?.allocated_cost_basis);if(Number.isFinite(allocated))state.costBasis=Math.max(0,state.costBasis-Math.max(0,allocated));else state.costKnown=false;
       const rowRealized=Number(row?.realized_pnl);if(Number.isFinite(rowRealized))state.realized+=rowRealized;
     }
@@ -1752,11 +1775,13 @@ class InvestmentPanel extends HTMLElement {
     if(metric==="costs")return state.costs;
     if(metric==="assetFees")return state.assetFees;
     if(metric==="costBasis")return state.costKnown?state.costBasis:null;
+    if(metric==="quantity")return state.quantity;
+    if(metric==="realized")return state.realized;
     return null;
   }
   ledgerMetricSeries(events=[],startTs=0,endTs=Math.floor(Date.now()/1000)){
     const sorted=(events||[]).filter(row=>Number.isFinite(Number(row?.sort_ts))).slice().sort((a,b)=>Number(a.sort_ts)-Number(b.sort_ts)||String(a.id||"").localeCompare(String(b.id||"")));
-    const result={invested:[],costs:[],assetFees:[],costBasis:[]};if(!sorted.length)return result;
+    const result={invested:[],costs:[],assetFees:[],costBasis:[],quantity:[],realized:[]};if(!sorted.length)return result;
     const state=this.newLedgerMetricState(),metrics=Object.keys(result);let index=0;
     while(index<sorted.length&&Number(sorted[index].sort_ts)<startTs)this.applyLedgerMetricEvent(state,sorted[index++]);
     const push=ts=>{for(const metric of metrics){const value=this.ledgerMetricValue(state,metric);if(Number.isFinite(Number(value)))result[metric].push({ts:Number(ts),value:Number(value)});}};
@@ -1781,15 +1806,20 @@ class InvestmentPanel extends HTMLElement {
   trendMetricPoints(tr=this._trend){
     const base=(tr?.points||[]).filter(point=>Number.isFinite(Number(point?.value))&&Number.isFinite(Number(point?.ts))).map(point=>({ts:Number(point.ts),value:Number(point.value)})).sort((a,b)=>a.ts-b.ts);
     const metric=String(tr?.metric||"value");if(metric==="value")return base;
-    const events=this.trendScopeLedgerEvents(tr);
-    if(["invested","costs","assetFees","costBasis"].includes(metric)){
+    const events=this.trendScopeLedgerEvents(tr),holdingOnly=["price","quantity","realized","unrealized"].includes(metric);
+    if(holdingOnly&&tr?.scope!=="holding")return [];
+    if(["invested","costs","assetFees","costBasis","quantity","realized"].includes(metric)){
       const bounds=this.historyTimeBounds(tr?.period||"1m",base,events);
       return this.ledgerMetricSeries(events,bounds.start,bounds.end)[metric]||[];
     }
-    if(metric!=="pnl"||!base.length)return base;
+    if(!base.length)return [];
     const snapshots=this.ledgerStateAtMarketPoints(events,base),out=[];
     base.forEach((point,index)=>{
-      const state=snapshots[index],value=state?.costKnown?point.value-state.costBasis+state.realized:null;
+      const state=snapshots[index];if(!state)return;
+      let value=null;
+      if(metric==="price")value=state.quantity>1e-12?point.value/state.quantity:null;
+      else if(metric==="unrealized")value=state.costKnown?point.value-state.costBasis:null;
+      else if(metric==="pnl")value=state.costKnown?point.value-state.costBasis+state.realized:null;
       if(Number.isFinite(Number(value)))out.push({ts:point.ts,value:Number(value)});
     });
     return out;
@@ -1831,7 +1861,7 @@ class InvestmentPanel extends HTMLElement {
     const plotValues=kind==="events"?eventSeries.map(point=>Number(point.value)):cumulative;
     let min=Math.min(...plotValues),max=Math.max(...plotValues);
     if(kind==="events"){min=0;max=Math.max(0,max);}
-    if(kind==="divergence"){min=Math.min(min,0);max=Math.max(max,0);}
+    if(kind==="divergence"||kind==="divergenceStep"){min=Math.min(min,0);max=Math.max(max,0);}
     const mid=(min+max)/2,span=max-min||1;
     const first=Number(points[0]?.value),last=Number(points[points.length-1]?.value);
     const change=first!==0&&Number.isFinite(first)&&Number.isFinite(last)?(last/first-1)*100:null;
@@ -1851,11 +1881,13 @@ class InvestmentPanel extends HTMLElement {
         return `<rect class="trend-event-bar" x="${x.toFixed(2)}" y="${y.toFixed(2)}" width="${barWidth.toFixed(2)}" height="${height.toFixed(2)}" rx="2.2"/>`;
       }).join("");
     }else{
-      const draw=kind==="step"?raw.flatMap((point,index)=>index===0?[point]:[{x:point.x,y:raw[index-1].y},point]):raw;
+      const stepLike=kind==="step"||kind==="divergenceStep";
+      const divergenceLike=kind==="divergence"||kind==="divergenceStep";
+      const draw=stepLike?raw.flatMap((point,index)=>index===0?[point]:[{x:point.x,y:raw[index-1].y},point]):raw;
       const coords=draw.map(point=>`${point.x},${point.y}`).join(" ");
-      const baseline=kind==="divergence"?zeroY:h-padY;
+      const baseline=divergenceLike?zeroY:h-padY;
       const areaPoints=`${padX},${baseline} ${coords} ${w-padX},${baseline}`;
-      if(kind==="divergence"){
+      if(divergenceLike){
         const zeroStop=clamp(((zeroY-padY)/Math.max(1,h-padY*2))*100,0,100).toFixed(3);
         defs+=`<linearGradient id="investment-pnl-line" gradientUnits="userSpaceOnUse" x1="0" y1="${padY}" x2="0" y2="${h-padY}"><stop offset="0%" stop-color="var(--success-color,#2eae67)"/><stop offset="${zeroStop}%" stop-color="var(--success-color,#2eae67)"/><stop offset="${zeroStop}%" stop-color="var(--error-color,#db4437)"/><stop offset="100%" stop-color="var(--error-color,#db4437)"/></linearGradient><linearGradient id="investment-pnl-area" gradientUnits="userSpaceOnUse" x1="0" y1="${padY}" x2="0" y2="${h-padY}"><stop offset="0%" stop-color="var(--success-color,#2eae67)" stop-opacity=".20"/><stop offset="${zeroStop}%" stop-color="var(--success-color,#2eae67)" stop-opacity=".05"/><stop offset="${zeroStop}%" stop-color="var(--error-color,#db4437)" stop-opacity=".05"/><stop offset="100%" stop-color="var(--error-color,#db4437)" stop-opacity=".20"/></linearGradient>`;
         chartBody=`<polygon class="trend-area trend-pnl-area" points="${areaPoints}" fill="url(#investment-pnl-area)"/><polyline class="trend-line trend-pnl-line" points="${coords}" fill="none" stroke="url(#investment-pnl-line)" stroke-width="2.6" vector-effect="non-scaling-stroke"/>`;
@@ -1864,9 +1896,9 @@ class InvestmentPanel extends HTMLElement {
       }
       endMarker=`<circle class="trend-end-marker" cx="${raw.at(-1).x}" cy="${raw.at(-1).y}" r="3.7"/>`;
     }
-    const zeroLine=kind==="divergence"&&min<0&&max>0?`<line class="trend-zero-line" x1="${padX}" y1="${zeroY}" x2="${w-padX}" y2="${zeroY}"/>`:"";
+    const zeroLine=(kind==="divergence"||kind==="divergenceStep")&&min<0&&max>0?`<line class="trend-zero-line" x1="${padX}" y1="${zeroY}" x2="${w-padX}" y2="${zeroY}"/>`:"";
     return `<div class="interactive-chart professional-history-chart ${seriesClass} ${kind}" data-trend-chart data-chart-kind="${kind}" data-chart-width="${w}" data-chart-height="${h}" data-chart-pad-x="${padX}" data-chart-pad-y="${padY}">
-      <div class="trend-y-label top">${this.money(max,tr.currency)}</div><div class="trend-y-label middle">${this.money(mid,tr.currency)}</div><div class="trend-y-label bottom">${this.money(min,tr.currency)}</div>
+      <div class="trend-y-label top">${this.trendMetricFormat(max,tr)}</div><div class="trend-y-label middle">${this.trendMetricFormat(mid,tr)}</div><div class="trend-y-label bottom">${this.trendMetricFormat(min,tr)}</div>
       <svg class="spark history-spark ${seriesClass}" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" role="img" aria-label="${esc(this.trendMetricLabel(metric))}">
         <defs>${defs}</defs>
         <line class="trend-grid-line" x1="${padX}" y1="${padY}" x2="${w-padX}" y2="${padY}"/><line class="trend-grid-line" x1="${padX}" y1="${h/2}" x2="${w-padX}" y2="${h/2}"/><line class="trend-grid-line" x1="${padX}" y1="${h-padY}" x2="${w-padX}" y2="${h-padY}"/>${zeroLine}
@@ -1885,17 +1917,19 @@ class InvestmentPanel extends HTMLElement {
     const change=first!==null&&first!==0&&last!==null?(last/first-1)*100:null,range=high!==null&&low!==null?high-low:null;
     const eventDeltas=kind==="events"?numeric.map((value,index)=>index===0?0:Math.max(0,value-numeric[index-1])):[],periodEventTotal=eventDeltas.reduce((sum,value)=>sum+value,0),largestEvent=eventDeltas.length?Math.max(...eventDeltas):0,eventCount=eventDeltas.filter(value=>value>1e-12).length;
     const tone=this.trendMetricTone(tr,last,change),scopeLabel=this.trendScopeLabel(tr),latestTs=pts.length?pts[pts.length-1]?.ts:null;
-    const zoomed=win.total>1&&(win.start>0||win.end<win.total-1),valueText=last!==null?this.money(last,tr.currency):"—";
-    const changeText=absChange!==null?`${absChange>=0?"+":""}${this.money(absChange,tr.currency)}${["pnl","costs","assetFees"].includes(metric)?"":` · ${this.pct(change)}`}`:"—";
-    const pillText=metric==="pnl"?(last===null?"—":this.money(last,tr.currency)):kind==="events"?(absChange===null?"—":`${absChange>=0?"+":""}${this.money(absChange,tr.currency)}`):(change===null?"—":this.pct(change));
+    const zoomed=win.total>1&&(win.start>0||win.end<win.total-1),valueText=last!==null?this.trendMetricFormat(last,tr):"—";
+    const formattedAbs=absChange!==null?this.trendMetricFormat(Math.abs(absChange),tr):"—";
+    const changeText=absChange!==null?`${absChange>=0?"+":"−"}${formattedAbs}${this.trendMetricPercentMeaningful(metric)?` · ${this.pct(change)}`:""}`:"—";
+    const signedMetric=["pnl","realized","unrealized"].includes(metric);
+    const pillText=signedMetric?(last===null?"—":this.trendMetricFormat(last,tr)):kind==="events"?(absChange===null?"—":`${absChange>=0?"+":"−"}${formattedAbs}`):(change===null?"—":this.pct(change));
     const statsHtml=kind==="events"
-      ?`<div class="history-stats event-stats"><span><small>${esc(this.t("historyStart"))}</small><b>${this.money(first,tr.currency)}</b></span><span><small>${esc(this.t("historyPeriodTotal"))}</small><b>${this.money(periodEventTotal,tr.currency)}</b></span><span><small>${esc(this.t("historyLargestEvent"))}</small><b>${this.money(largestEvent,tr.currency)}</b></span><span><small>${esc(this.t("historyEvents"))}</small><b>${this.num(eventCount,0)}</b></span><span><small>${esc(this.t("historyEnd"))}</small><b>${this.money(last,tr.currency)}</b></span></div>`
-      :`<div class="history-stats"><span><small>${esc(this.t("historyStart"))}</small><b>${this.money(first,tr.currency)}</b></span><span><small>${esc(this.t("historyHigh"))}</small><b>${this.money(high,tr.currency)}</b></span><span><small>${esc(this.t("historyLow"))}</small><b>${this.money(low,tr.currency)}</b></span><span><small>${esc(this.t("historyEnd"))}</small><b>${this.money(last,tr.currency)}</b></span><span><small>${esc(this.t("historyRange"))}</small><b>${this.money(range,tr.currency)}</b></span></div>`;
-    const metrics=[["value",this.t("value")],["costBasis",this.t("currentCostBasis")],["invested",this.t("principalSpent")],["costs",this.t("otherCosts")],["assetFees",this.t("assetFees")],["pnl",this.t("totalPnl")]];
+      ?`<div class="history-stats event-stats"><span><small>${esc(this.t("historyStart"))}</small><b>${this.trendMetricFormat(first,tr)}</b></span><span><small>${esc(this.t("historyPeriodTotal"))}</small><b>${this.money(periodEventTotal,tr.currency)}</b></span><span><small>${esc(this.t("historyLargestEvent"))}</small><b>${this.money(largestEvent,tr.currency)}</b></span><span><small>${esc(this.t("historyEvents"))}</small><b>${this.num(eventCount,0)}</b></span><span><small>${esc(this.t("historyEnd"))}</small><b>${this.trendMetricFormat(last,tr)}</b></span></div>`
+      :`<div class="history-stats"><span><small>${esc(this.t("historyStart"))}</small><b>${this.trendMetricFormat(first,tr)}</b></span><span><small>${esc(this.t("historyHigh"))}</small><b>${this.trendMetricFormat(high,tr)}</b></span><span><small>${esc(this.t("historyLow"))}</small><b>${this.trendMetricFormat(low,tr)}</b></span><span><small>${esc(this.t("historyEnd"))}</small><b>${this.trendMetricFormat(last,tr)}</b></span><span><small>${esc(this.t("historyRange"))}</small><b>${this.trendMetricFormat(range,tr)}</b></span></div>`;
+    const metrics=this.trendSupportedMetrics(tr);
     return `<div class="trend-pop history-card ${this._trendPinned?"pinned":"preview"}" style="left:${tr.left}px;top:${tr.top}px" data-trend-pop>
       <div class="trend-head history-head"><div class="history-title"><strong>${esc(this.t("historicalAnalysis"))}</strong><small>${esc(scopeLabel)}${tr.currency?` · ${esc(tr.currency)}`:""}${latestTs?` · ${esc(this.t("historyUpdated"))} ${esc(this.trendUpdatedLabel(latestTs))}`:""}</small></div><div class="history-head-actions"><span class="history-change-pill ${tone}">${pillText}</span><button class="trend-close" data-close-trend title="${esc(this.t("close"))}">×</button></div></div>
       <div class="trend-metrics" data-no-trend>${metrics.map(([key,label])=>`<button type="button" data-trend-metric="${key}" class="${metric===key?"active":""}">${esc(label)}</button>`).join("")}</div>
-      <div class="history-primary"><div><small>${esc(metricLabel)}</small><strong class="${metric==="pnl"?tone:""}">${valueText}</strong></div><div class="history-period-change ${tone}"><small>${esc(this.t("periodChange"))}</small><strong>${changeText}</strong></div></div>
+      <div class="history-primary"><div><small>${esc(metricLabel)}</small><strong class="${["pnl","realized","unrealized"].includes(metric)?tone:""}">${valueText}</strong></div><div class="history-period-change ${tone}"><small>${esc(this.t("periodChange"))}</small><strong>${changeText}</strong></div></div>
       <div class="periods history-periods">${PERIODS.map(period=>`<button class="period ${period===tr.period?"active":""}" data-period="${period}">${period.toUpperCase()}</button>`).join("")}</div>
       ${tr.loading?`<div class="chart-loading">${esc(this.t("loading"))}</div>`:tr.error?`<div class="chart-loading">${esc(this.t("error"))}</div>`:this.trendChart(pts,tr)}
       ${!tr.loading&&!tr.error&&numeric.length?statsHtml:""}
@@ -1924,7 +1958,7 @@ class InvestmentPanel extends HTMLElement {
     const eventSeries=kind==="events"?this.trendEventDeltas(win.points):null,plotValues=kind==="events"?eventSeries.map(p=>Number(p.value)):visibleValues;
     let min=Math.min(...plotValues),max=Math.max(...plotValues);
     if(kind==="events"){min=0;max=Math.max(0,max);}
-    if(kind==="divergence"){min=Math.min(min,0);max=Math.max(max,0);}
+    if(kind==="divergence"||kind==="divergenceStep"){min=Math.min(min,0);max=Math.max(max,0);}
     const span=max-min||1,w=Number(chart.dataset.chartWidth)||400,h=Number(chart.dataset.chartHeight)||148,padX=Number(chart.dataset.chartPadX)||8,padY=Number(chart.dataset.chartPadY)||12;
     const firstTs=Number(win.points[0]?.ts),lastTs=Number(win.points.at(-1)?.ts),timeSpan=Math.max(1,lastTs-firstTs);
     const x=padX+((Number(point.ts)-firstTs)/timeSpan)*(w-padX*2);
@@ -1938,8 +1972,8 @@ class InvestmentPanel extends HTMLElement {
       const percentDelta=Number.isFinite(previous)&&previous!==0?(value/previous-1)*100:null;
       const tone=kind==="events"?"warning":this.trendMetricTone(tr,value,percentDelta);
       const displayValue=kind==="events"?plottedValue:value;
-      const secondary=kind==="events"?`Σ ${this.money(value,tr.currency)}`:(metric==="pnl"||kind==="step")?(absoluteDelta===null?"—":`${absoluteDelta>=0?"+":""}${this.money(absoluteDelta,tr.currency)}`):(percentDelta===null?"—":this.pct(percentDelta));
-      if(valueEl){valueEl.textContent=this.money(displayValue,tr.currency);valueEl.className=tone;}
+      const secondary=kind==="events"?`Σ ${this.trendMetricFormat(value,tr)}`:(["pnl","realized","unrealized"].includes(metric)||kind==="step"||kind==="divergenceStep")?(absoluteDelta===null?"—":`${absoluteDelta>=0?"+":"−"}${this.trendMetricFormat(Math.abs(absoluteDelta),tr)}`):(percentDelta===null?"—":this.pct(percentDelta));
+      if(valueEl){valueEl.textContent=this.trendMetricFormat(displayValue,tr);valueEl.className=tone;}
       if(changeEl){changeEl.textContent=secondary;changeEl.className=`trend-tooltip-change ${tone}`;}
       if(timeEl)timeEl.textContent=this.trendDateLabel(point.ts,tr.period);
       const rect=chart.getBoundingClientRect(),tipW=Math.max(116,tip.offsetWidth||116),tipH=Math.max(48,tip.offsetHeight||48);
@@ -2026,15 +2060,16 @@ class InvestmentPanel extends HTMLElement {
       return `<svg class="kpi-spark kpi-bars ${esc(tone)}" data-kpi-chart="${esc(metric)}" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" aria-hidden="true"><line class="kpi-event-baseline" x1="${pad}" y1="${h-pad}" x2="${w-pad}" y2="${h-pad}"/>${bars}</svg>`;
     }
     let min=Math.min(...values),max=Math.max(...values);
-    if(metric==="pnl"){min=Math.min(min,0);max=Math.max(max,0);}
+    if(metric==="pnl"||metric==="realized"){min=Math.min(min,0);max=Math.max(max,0);}
     const span=max-min||1;
     const raw=values.map((value,index)=>({x:xFor(index),y:h-pad-((value-min)/span)*(h-pad*2)}));
-    const kind=(metric==="invested"||metric==="costBasis")?"step":metric==="pnl"?"divergence":"area";
-    const draw=kind==="step"?raw.flatMap((point,index)=>index===0?[point]:[{x:point.x,y:raw[index-1].y},point]):raw;
+    const kind=(metric==="invested"||metric==="costBasis"||metric==="quantity")?"step":metric==="realized"?"divergenceStep":metric==="pnl"?"divergence":"area";
+    const stepLike=kind==="step"||kind==="divergenceStep";
+    const draw=stepLike?raw.flatMap((point,index)=>index===0?[point]:[{x:point.x,y:raw[index-1].y},point]):raw;
     const coords=draw.map(point=>`${point.x},${point.y}`).join(" ");
     const area=kind==="area"?`<polygon points="${pad},${h-pad} ${coords} ${w-pad},${h-pad}" fill="currentColor" opacity=".08"/>`:"";
     const zeroY=h-pad-((0-min)/span)*(h-pad*2);
-    const zero=metric==="pnl"&&min<=0&&max>=0?`<line class="kpi-zero-line" x1="${pad}" y1="${zeroY}" x2="${w-pad}" y2="${zeroY}"/>`:"";
+    const zero=(metric==="pnl"||metric==="realized")&&min<=0&&max>=0?`<line class="kpi-zero-line" x1="${pad}" y1="${zeroY}" x2="${w-pad}" y2="${zeroY}"/>`:"";
     const last=raw.at(-1);
     return `<svg class="kpi-spark kpi-${kind} ${esc(tone)}" data-kpi-chart="${esc(metric)}" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" aria-hidden="true">${zero}${area}<polyline points="${coords}" fill="none" stroke="currentColor" stroke-width="2" vector-effect="non-scaling-stroke"/><circle cx="${last.x}" cy="${last.y}" r="2.4" fill="var(--card-background-color)" stroke="currentColor" stroke-width="2"/></svg>`;
   }
@@ -2272,7 +2307,7 @@ class InvestmentPanel extends HTMLElement {
         </div>
       </div>
       ${marketError?`<div class="error-text" data-no-trend>${esc(this.t("error"))}${h.error?` · ${esc(h.error)}`:""}</div>`:""}
-      <div class="quote-row holding-primary-summary"><div data-history-metric="value" title="${esc(this.holdingTooltip(h,"value"))}"><span>${esc(this.t("value"))}</span><strong>${this.money(h.value)}</strong></div><div title="${esc(this.holdingTooltip(h,"units"))}"><span>${esc(this.t("currentUnits"))}</span><strong>${this.num(q)} ${esc(this.assetUnit(h))}</strong></div><div title="${esc(this.holdingTooltip(h,"latest"))}"><span>${esc(this.t("latest"))}</span><strong>${this.money(h.price,h.quote_currency)}</strong></div></div>
+      <div class="quote-row holding-primary-summary"><div data-history-metric="value" title="${esc(this.holdingTooltip(h,"value"))}"><span>${esc(this.t("value"))}</span><strong>${this.money(h.value)}</strong></div><div data-history-metric="quantity" title="${esc(this.holdingTooltip(h,"units"))}"><span>${esc(this.t("currentUnits"))}</span><strong>${this.num(q)} ${esc(this.assetUnit(h))}</strong>${this.metricMiniChartHtml(ledgerSeries.quantity,"quantity","accent")}</div><div data-history-metric="price" title="${esc(this.holdingTooltip(h,"latest"))}"><span>${esc(this.t("latest"))}</span><strong>${this.money(h.price,h.quote_currency)}</strong></div></div>
       <div class="change-row"><span data-history-metric="value" class="${this.signClass(h.today_change)}" title="${esc(this.holdingTooltip(h,"today"))}"><em>${esc(this.t("today"))} ${this.money(h.today_change)} · ${this.pct(h.today_pct)}</em>${this.changeMeterHtml(h.today_pct,this.signClass(h.today_change))}</span><span data-history-metric="pnl" class="${this.signClass(h.pnl)}" title="${esc(this.holdingTooltip(h,"total"))}"><em>${esc(this.t("totalPnl"))} ${this.money(h.pnl)} ${h.pnl_pct!==null&&h.pnl_pct!==undefined?`· ${this.pct(h.pnl_pct)}`:""}</em>${this.changeMeterHtml(h.pnl_pct,this.signClass(h.pnl))}</span></div>
       <div class="ledger-totals holding-secondary-summary">
         ${Number(h.shared_quantity||0)>1e-12?`<span class="shared-excluded-total" title="${esc(this.holdingTooltip(h,"shared"))}">${esc(this.t("sharedExcluded"))}<b>${this.num(h.shared_quantity)} ${esc(this.assetUnit(h))}</b></span>`:""}
@@ -2280,8 +2315,8 @@ class InvestmentPanel extends HTMLElement {
         <span class="visual-ledger-cell" data-history-metric="costBasis" title="${esc(this.holdingTooltip(h,"costBasis"))}">${esc(this.t("currentCostBasis"))}<b>${this.money(h.cost_basis)}</b>${this.metricMiniChartHtml(ledgerSeries.costBasis,"costBasis","accent")}</span>
         <span class="visual-ledger-cell" data-history-metric="costs" title="${esc(this.holdingTooltip(h,"otherCosts"))}">${esc(this.t("otherCosts"))}<b>${this.money(h.other_cost_total)}</b>${this.metricMiniChartHtml(ledgerSeries.costs,"costs","warning")}</span>
         <span class="visual-ledger-cell" data-history-metric="assetFees">${esc(this.t("assetFees"))}<b>${this.money(h.asset_fee_value)}</b>${this.metricMiniChartHtml(ledgerSeries.assetFees,"assetFees","warning")}</span>
-        <span title="${esc(this.holdingTooltip(h,"realized"))}">${esc(this.t("realizedPnl"))}<b class="${this.signClass(h.realized_pnl)}">${this.money(h.realized_pnl)}</b></span>
-        <span title="${esc(this.holdingTooltip(h,"unrealized"))}">${esc(this.t("unrealizedPnl"))}<b class="${this.signClass(h.unrealized_pnl)}">${this.money(h.unrealized_pnl)}</b></span>
+        <span data-history-metric="realized" title="${esc(this.holdingTooltip(h,"realized"))}">${esc(this.t("realizedPnl"))}<b class="${this.signClass(h.realized_pnl)}">${this.money(h.realized_pnl)}</b>${this.metricMiniChartHtml(ledgerSeries.realized,"realized",this.signClass(h.realized_pnl))}</span>
+        <span data-history-metric="unrealized" title="${esc(this.holdingTooltip(h,"unrealized"))}">${esc(this.t("unrealizedPnl"))}<b class="${this.signClass(h.unrealized_pnl)}">${this.money(h.unrealized_pnl)}</b></span>
         <span data-history-metric="pnl" title="${esc(this.holdingTooltip(h,"total"))}">${esc(this.t("totalPnl"))}<b class="${this.signClass(h.pnl)}">${this.money(h.pnl)}</b></span>
       </div>
       ${providerBalancesHtml}
@@ -2536,7 +2571,7 @@ class InvestmentPanel extends HTMLElement {
     }
     root.querySelector("[data-close-trend]")?.addEventListener("click",()=>this.closeTrend());
     root.querySelectorAll("[data-trend-metric]").forEach(button=>button.addEventListener("click",event=>{
-      event.stopPropagation();const tr=this._trend,metric=String(button.dataset.trendMetric||"value");if(!tr||!["value","costBasis","invested","costs","assetFees","pnl"].includes(metric)||metric===tr.metric)return;
+      event.stopPropagation();const tr=this._trend,metric=String(button.dataset.trendMetric||"value");if(!tr||!this.trendSupportedMetrics(tr).some(([key])=>key===metric)||metric===tr.metric)return;
       tr.metric=metric;tr.hoverIndex=null;const series=this.trendMetricPoints(tr);tr.zoomStart=0;tr.zoomEnd=Math.max(0,series.length-1);this.updateTrendUi();
     }));
     root.querySelectorAll("[data-period]").forEach(b=>b.addEventListener("click",()=>{
