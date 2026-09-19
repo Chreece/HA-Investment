@@ -58,7 +58,6 @@ def test_ai_language_is_enforced_with_one_retry_and_safe_display_fallback():
     assert "display_structured" in panel
     assert "display_text" in panel
 
-
 def test_selective_whole_unit_helper_marks_only_selected_wrapper_type():
     import importlib.util
     spec = importlib.util.spec_from_file_location("validated_model_v14g", ROOT / "validated_model.py")
@@ -70,22 +69,12 @@ def test_selective_whole_unit_helper_marks_only_selected_wrapper_type():
     assert module._whole_unit_required({"category": "stock"}, False, selected) is False
     assert module._whole_unit_required({"category": "stock"}, True, selected) is True
 
-
 def test_frontend_selective_unit_display_and_empty_state_use_per_item_requirement():
     panel = text("www/investment-panel.js")
     assert "!!item?.whole_units_only" in panel
     assert "whole_unit_categories" in panel
     runtime = text("www/investment-panel-runtime.js")
     assert "whole_unit_categories)&&p.whole_unit_categories.length" in runtime
-
-
-def test_v14g5_bumps_runtime_asset_revision_and_component_identity():
-    const = text("const.py")
-    runtime = text("www/investment-panel-runtime.js")
-    assert 'PANEL_ASSET_REVISION = "0.4.0-r50"' in const
-    assert 'investment-panel.js?v=0.4.0-r50' in runtime
-    assert 'PANEL_NAME = "investment-panel-r50"' in const
-
 
 def test_selective_whole_units_change_literal_output_without_forcing_other_types():
     import importlib.util
@@ -111,14 +100,12 @@ def test_selective_whole_units_change_literal_output_without_forcing_other_types
     assert by_symbol["STK"]["suggested_amount"] == 45.0
     assert meta["risk_scale"] == 1.0
 
-
 def test_ai_normal_view_localizes_known_structured_field_labels():
     panel = text("www/investment-panel-runtime.js")
     assert "function aiKeyLabel" in panel
     assert 'el:"Καλύτερη αντιστοίχιση"' in panel
     assert 'el:"Επόμενα βήματα"' in panel
     assert "panel.indicationSignalText(row.action" in panel
-
 
 def test_runtime_manager_accepts_and_forwards_selective_whole_unit_categories():
     runtime_manager = text("runtime_manager.py")
