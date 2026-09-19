@@ -1362,7 +1362,7 @@ def production_projection(
 
     for item in projected:
         amount_cents = int(round(max(0.0, _sf(item.get("suggested_amount"))) * 100.0))
-        if cap_cents is not None:
+        if cap_cents is not None and max_candidate_fraction_is_hard:
             amount_cents = min(amount_cents, cap_cents)
         amount = amount_cents / 100.0
         price = _sf(item.get("portfolio_price") or item.get("price"))
