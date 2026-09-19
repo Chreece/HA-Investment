@@ -130,6 +130,30 @@ class InvestmentStore:
         if raw_exposed != exposed:
             user["exposed_entities"] = exposed
             changed = True
+        raw_holding_providers = user.get("holding_providers")
+        holding_providers: list[dict[str, str]] = []
+        seen_provider_ids: set[str] = set()
+        seen_provider_names: set[str] = set()
+        if isinstance(raw_holding_providers, list):
+            for raw_provider in raw_holding_providers[:100]:
+                if not isinstance(raw_provider, dict):
+                    continue
+                provider_id = str(raw_provider.get("id") or "").strip()[:80]
+                provider_name = str(raw_provider.get("name") or "").strip()[:80]
+                folded_name = provider_name.casefold()
+                if (
+                    not provider_id
+                    or not provider_name
+                    or provider_id in seen_provider_ids
+                    or folded_name in seen_provider_names
+                ):
+                    continue
+                seen_provider_ids.add(provider_id)
+                seen_provider_names.add(folded_name)
+                holding_providers.append({"id": provider_id, "name": provider_name})
+        if raw_holding_providers != holding_providers:
+            user["holding_providers"] = holding_providers
+            changed = True
         if "holdings" not in user:
             user["holdings"] = []
             changed = True
@@ -137,6 +161,10 @@ class InvestmentStore:
             user["category_expenses"] = {}
             changed = True
         for holding in user["holdings"]:
+            holding_provider_id = str(holding.get("holding_provider_id") or "").strip()[:80]
+            if holding.get("holding_provider_id") != holding_provider_id:
+                holding["holding_provider_id"] = holding_provider_id
+                changed = True
             holding_currency = canonical_currency(holding.get("currency") or user.get("base_currency") or DEFAULT_BASE_CURRENCY)
             if holding.get("currency") != holding_currency:
                 holding["currency"] = holding_currency
@@ -223,6 +251,7 @@ class InvestmentStore:
                 "indication_disclaimer_language": None,
                 "indication_preferences": dict(DEFAULT_INDICATION_PREFERENCES),
                 "exposed_entities": [],
+                "holding_providers": [],
                 "holdings": [],
                 "category_expenses": {},
             },
@@ -259,6 +288,7 @@ class InvestmentStore:
         developer_indicator_unlocked: bool | None = None,
         indication_preferences: dict[str, Any] | None = None,
         exposed_entities: list[str] | None = None,
+        holding_providers: list[dict[str, str]] | None = None,
         indication_disclaimer_version: int | None = None,
         indication_disclaimer_region: str | None = None,
         indication_disclaimer_language: str | None = None,
@@ -283,6 +313,19 @@ class InvestmentStore:
             if exposed_entities is not None:
                 selected = set(exposed_entities)
                 user["exposed_entities"] = [metric for metric in EXPOSABLE_ENTITY_METRICS if metric in selected]
+            if holding_providers is not None:
+                requested_ids = {provider["id"] for provider in holding_providers}
+                assigned_ids = {
+                    str(holding.get("holding_provider_id") or "")
+                    for holding in user.get("holdings", [])
+                    if holding.get("holding_provider_id")
+                }
+                missing_ids = assigned_ids - requested_ids
+                if missing_ids:
+                    raise ValueError(
+                        "A holding provider is still assigned; reassign its holdings before removing it"
+                    )
+                user["holding_providers"] = deepcopy(holding_providers)
             if indication_disclaimer_version is not None:
                 user["indication_disclaimer_version"] = int(indication_disclaimer_version)
                 user["indication_disclaimer_accepted_at"] = int(time.time())
@@ -364,10 +407,22 @@ class InvestmentStore:
         trade_fx_source: str | None = None,
         shared_allocations: list[dict[str, Any]] | None = None,
         shared_ownership: dict[str, Any] | None = None,
+        holding_provider_id: str | None = None,
     ) -> dict[str, Any]:
         """Add an asset purchase and preserve its transaction costs."""
         async with self._lock:
             user = self._ensure_user(user_id)
+            normalized_holding_provider_id = (
+                None if holding_provider_id is None else str(holding_provider_id).strip()[:80]
+            )
+            if normalized_holding_provider_id:
+                valid_provider_ids = {
+                    str(provider.get("id") or "")
+                    for provider in user.get("holding_providers", [])
+                    if isinstance(provider, dict)
+                }
+                if normalized_holding_provider_id not in valid_provider_ids:
+                    raise ValueError("Unknown holding provider")
             quantity = max(0.0, float(quantity))
             average_buy_price = (
                 None if average_buy_price is None else round(max(0.0, float(average_buy_price)), 12)
@@ -457,6 +512,8 @@ class InvestmentStore:
                         old_gross, old_average, gross_quantity, average_buy_price
                     )
                     existing.setdefault("transactions", []).append(transaction)
+                    if normalized_holding_provider_id is not None:
+                        existing["holding_provider_id"] = normalized_holding_provider_id
                     self._recompute_holding_aggregate(existing)
                     await self._store.async_save(self._data)
                     return deepcopy(existing)
@@ -474,6 +531,7 @@ class InvestmentStore:
                 "shared_quantity": round(sum(float(a["quantity"]) for a in shared_allocations), 12),
                 "custody_quantity": round(quantity, 12),
                 "average_buy_price": average_buy_price,
+                "holding_provider_id": normalized_holding_provider_id or "",
                 "transactions": [transaction],
             }
             user["holdings"].append(holding)
@@ -688,15 +746,25 @@ class InvestmentStore:
         Quantity and cost basis are intentionally excluded: transaction history
         is authoritative from v0.3.0 onward.
         """
-        allowed = {"category"}
+        allowed = {"category", "holding_provider_id"}
         async with self._lock:
             user = self._ensure_user(user_id)
+            valid_provider_ids = {
+                str(provider.get("id") or "")
+                for provider in user.get("holding_providers", [])
+                if isinstance(provider, dict)
+            }
             for holding in user["holdings"]:
                 if holding["id"] != holding_id:
                     continue
                 for key, value in changes.items():
-                    if key in allowed:
-                        holding[key] = value
+                    if key not in allowed:
+                        continue
+                    if key == "holding_provider_id":
+                        value = str(value or "").strip()[:80]
+                        if value and value not in valid_provider_ids:
+                            raise ValueError("Unknown holding provider")
+                    holding[key] = value
                 await self._store.async_save(self._data)
                 return deepcopy(holding)
         return None

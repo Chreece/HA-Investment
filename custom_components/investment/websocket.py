@@ -44,6 +44,13 @@ SHARED_OWNERSHIP_SCHEMA = vol.Schema(
     }
 )
 
+HOLDING_PROVIDER_SCHEMA = vol.Schema(
+    {
+        vol.Required("id"): vol.All(str, vol.Length(min=1, max=80)),
+        vol.Required("name"): vol.All(str, vol.Length(min=1, max=80)),
+    }
+)
+
 
 def _manager(hass: HomeAssistant):
     data = hass.data.get(DOMAIN)
@@ -173,6 +180,7 @@ async def ws_quote(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None
         vol.Optional("settlement_currency"): vol.All(str, vol.Length(min=3, max=3)),
         vol.Optional("fx_rate"): vol.Any(None, vol.Coerce(float)),
         vol.Optional("trade_fx_rate"): vol.Any(None, vol.Coerce(float)),
+        vol.Optional("holding_provider_id"): vol.All(str, vol.Length(max=80)),
     }
 )
 @websocket_api.async_response
@@ -200,6 +208,7 @@ async def ws_add(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
             settlement_currency=msg.get("settlement_currency"),
             fx_rate=msg.get("fx_rate"),
             trade_fx_rate=msg.get("trade_fx_rate"),
+            holding_provider_id=msg.get("holding_provider_id"),
         )
         connection.send_result(msg["id"], {"holding": holding})
     except Exception as err:
@@ -284,6 +293,7 @@ async def ws_sell(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
         vol.Optional("settlement_currency"): vol.All(str, vol.Length(min=3, max=3)),
         vol.Optional("fx_rate"): vol.Any(None, vol.Coerce(float)),
         vol.Optional("trade_fx_rate"): vol.Any(None, vol.Coerce(float)),
+        vol.Optional("holding_provider_id"): vol.All(str, vol.Length(max=80)),
     }
 )
 @websocket_api.async_response
@@ -314,6 +324,7 @@ async def ws_edit_transaction(hass: HomeAssistant, connection, msg: dict[str, An
             settlement_currency=msg.get("settlement_currency"),
             fx_rate=msg.get("fx_rate"),
             trade_fx_rate=msg.get("trade_fx_rate"),
+            holding_provider_id=msg.get("holding_provider_id"),
         )
         connection.send_result(msg["id"], {"holding": holding})
     except Exception as err:
@@ -327,12 +338,17 @@ async def ws_edit_transaction(hass: HomeAssistant, connection, msg: dict[str, An
         vol.Optional("quantity"): vol.Any(None, vol.Coerce(float)),
         vol.Optional("average_buy_price"): vol.Any(None, vol.Coerce(float)),
         vol.Optional("category"): vol.In(["crypto", "etf", "stock", "fund", "index", "commodity", "fx", "other"]),
+        vol.Optional("holding_provider_id"): vol.All(str, vol.Length(max=80)),
     }
 )
 @websocket_api.async_response
 async def ws_update(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
     try:
-        changes = {k: msg[k] for k in ("quantity", "average_buy_price", "category") if k in msg}
+        changes = {
+            k: msg[k]
+            for k in ("quantity", "average_buy_price", "category", "holding_provider_id")
+            if k in msg
+        }
         holding = await _manager(hass).async_update(_user_id(connection), msg["holding_id"], changes)
         connection.send_result(msg["id"], {"holding": holding})
     except Exception as err:
@@ -361,6 +377,7 @@ async def ws_remove(hass: HomeAssistant, connection, msg: dict[str, Any]) -> Non
         vol.Optional("developer_indicator_unlocked"): bool,
         vol.Optional("indication_preferences"): dict,
         vol.Optional("exposed_entities"): [vol.In(EXPOSABLE_ENTITY_METRICS)],
+        vol.Optional("holding_providers"): [HOLDING_PROVIDER_SCHEMA],
         vol.Optional("indication_disclaimer_version"): vol.All(vol.Coerce(int), vol.Range(min=0, max=INDICATION_DISCLAIMER_VERSION)),
         vol.Optional("indication_disclaimer_region"): vol.In(INDICATION_LEGAL_REGIONS),
         vol.Optional("indication_disclaimer_language"): vol.In((DEFAULT_UI_LANGUAGE, *SUPPORTED_UI_LANGUAGES)),
@@ -369,7 +386,7 @@ async def ws_remove(hass: HomeAssistant, connection, msg: dict[str, Any]) -> Non
 @websocket_api.async_response
 async def ws_preferences(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
     try:
-        preference_keys = {"base_currency", "language", "incognito", "incognito_reveal_seconds", "developer_indicator_unlocked", "indication_preferences", "exposed_entities", "indication_disclaimer_version", "indication_disclaimer_region", "indication_disclaimer_language"}
+        preference_keys = {"base_currency", "language", "incognito", "incognito_reveal_seconds", "developer_indicator_unlocked", "indication_preferences", "exposed_entities", "holding_providers", "indication_disclaimer_version", "indication_disclaimer_region", "indication_disclaimer_language"}
         if not any(key in msg for key in preference_keys):
             raise ValueError("At least one preference is required")
         user = await _manager(hass).async_set_preferences(
@@ -381,6 +398,7 @@ async def ws_preferences(hass: HomeAssistant, connection, msg: dict[str, Any]) -
             developer_indicator_unlocked=msg.get("developer_indicator_unlocked"),
             indication_preferences=msg.get("indication_preferences"),
             exposed_entities=msg.get("exposed_entities"),
+            holding_providers=msg.get("holding_providers"),
             indication_disclaimer_version=msg.get("indication_disclaimer_version"),
             indication_disclaimer_region=msg.get("indication_disclaimer_region"),
             indication_disclaimer_language=msg.get("indication_disclaimer_language"),
@@ -395,6 +413,7 @@ async def ws_preferences(hass: HomeAssistant, connection, msg: dict[str, Any]) -
                 "developer_indicator_unlocked": bool(user.get("developer_indicator_unlocked", False)),
                 "indication_preferences": user.get("indication_preferences") or {},
                 "exposed_entities": list(user.get("exposed_entities") or []),
+                "holding_providers": list(user.get("holding_providers") or []),
                 "indication_disclaimer_version": int(user.get("indication_disclaimer_version") or 0),
                 "indication_disclaimer_accepted_at": user.get("indication_disclaimer_accepted_at"),
                 "indication_disclaimer_region": user.get("indication_disclaimer_region"),
