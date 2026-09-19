@@ -7,7 +7,7 @@ def test_dashboard_loads_real_portfolio_history_for_kpi_sparklines():
     assert 'async loadDashboardHistory(force=false)' in PANEL
     assert 'type:"investment/history",scope:"portfolio",period:"1m"' in PANEL
     assert "dashboardSeries(portfolio=this._portfolio)" in PANEL
-    assert "miniSparklineHtml(points,tone" in PANEL
+    assert 'metricMiniChartHtml(points,metric="value",tone="accent")' in PANEL
 
 
 def test_dashboard_contains_allocation_donut_and_monthly_flows():
