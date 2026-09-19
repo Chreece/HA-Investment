@@ -1857,7 +1857,6 @@ class InvestmentPanel extends HTMLElement {
         <div class="holding-actions" data-no-trend>
           <button class="trade-btn buy" data-buy="${esc(h.id)}">＋ ${esc(this.t("buy"))}</button>
           <button class="trade-btn sell" data-sell="${esc(h.id)}" ${q<=0?"disabled":""}>− ${esc(this.t("sell"))}</button>
-          <button class="more-btn" data-focus="expand-${esc(h.id)}" data-expand="${esc(h.id)}" title="${esc(this.t("edit"))}">⋯</button>
         </div>
       </div>
       ${marketError?`<div class="error-text" data-no-trend>${esc(this.t("error"))}${h.error?` · ${esc(h.error)}`:""}</div>`:""}
@@ -2077,7 +2076,6 @@ class InvestmentPanel extends HTMLElement {
     resultSlot?.addEventListener("keydown",e=>{const row=e.target.closest("[data-result-buy]");if(!row||!(e.key==="Enter"||e.key===" "))return;e.preventDefault();this.openAddResult(Number(row.dataset.resultBuy));});
     root.querySelectorAll("[data-category-toggle]").forEach(b=>b.addEventListener("click",e=>{e.stopPropagation();const id=b.dataset.categoryToggle;this._expandedCategories.has(id)?this._expandedCategories.delete(id):this._expandedCategories.add(id);this.render();}));
     root.querySelectorAll("[data-ledger-toggle]").forEach(b=>b.addEventListener("click",e=>{e.stopPropagation();const id=b.dataset.ledgerToggle;this._expandedLedgers.has(id)?this._expandedLedgers.delete(id):this._expandedLedgers.add(id);this.render();}));
-    root.querySelectorAll("[data-expand]").forEach(b=>b.addEventListener("click",e=>{e.stopPropagation();const id=b.dataset.expand;this._expanded.has(id)?this._expanded.delete(id):this._expanded.add(id);this.render();}));
     root.querySelectorAll("[data-buy]").forEach(b=>b.addEventListener("click",e=>{e.stopPropagation();this.openHoldingTrade(b.dataset.buy,"buy");}));
     root.querySelectorAll("[data-sell]").forEach(b=>b.addEventListener("click",e=>{e.stopPropagation();if(!b.disabled)this.openHoldingTrade(b.dataset.sell,"sell");}));
     root.querySelectorAll("[data-edit-transaction]").forEach(b=>b.addEventListener("click",e=>{e.stopPropagation();this.openEditTransaction(b.dataset.holdingId,b.dataset.editTransaction);}));
