@@ -255,6 +255,35 @@ def quantity_at(transactions: list[dict[str, Any]], timestamp: int) -> float:
     return max(0.0, quantity)
 
 
+
+def holding_provider_balances(
+    rows: list[dict[str, Any]],
+    provider_names: dict[str, str] | None = None,
+) -> list[dict[str, Any]]:
+    """Return remaining FIFO units grouped by the BUY lot's holding provider."""
+    names = provider_names or {}
+    balances: dict[str, float] = {}
+    for row in rows or []:
+        if str(row.get("type") or "buy") != "buy":
+            continue
+        remaining = max(0.0, float(row.get("remaining_quantity") or 0))
+        if remaining <= 1e-12:
+            continue
+        provider_id = str(row.get("holding_provider_id") or "")
+        balances[provider_id] = balances.get(provider_id, 0.0) + remaining
+    return [
+        {
+            "id": provider_id,
+            "name": names.get(provider_id) or None,
+            "quantity": round(quantity, 12),
+        }
+        for provider_id, quantity in sorted(
+            balances.items(),
+            key=lambda item: (names.get(item[0], "").casefold(), item[0]),
+        )
+    ]
+
+
 def fifo_summary(records: list[dict[str, Any]], current_price: float | None = None) -> LedgerSummary:
     """Apply immutable BUY/SELL records to FIFO lots.
 
