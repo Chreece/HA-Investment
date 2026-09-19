@@ -44,3 +44,15 @@ def test_summary_metrics_open_the_matching_history_mode_directly():
     assert 'requestedMetric=null' in PANEL
     assert 'metricEl.dataset.historyMetric' in PANEL
     assert 'e.target.closest("[data-history-metric]")' in PANEL
+
+
+def test_dashboard_transaction_kpis_share_exact_ledger_timeline():
+    assert 'exact=this.ledgerMetricSeries(events,bounds.start,bounds.end)' in PANEL
+    assert 'assetPrincipal:exact.invested' in PANEL
+    assert 'otherCosts:exact.costs' in PANEL
+    assert 'assetFees:exact.assetFees' in PANEL
+    assert 'costBasis:exact.costBasis' in PANEL
+
+
+def test_dashboard_mini_charts_use_time_proportional_spacing():
+    assert 'const xFor=index=>pad+((times[index]-firstTs)/timeSpan)*(w-pad*2);' in PANEL
