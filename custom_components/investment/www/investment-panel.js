@@ -702,7 +702,7 @@ class InvestmentPanel extends HTMLElement {
     // independent of HA locale updates; HA locale matters only in Auto mode.
     if(!this._loaded){
       this._loaded=true;
-      if(connected)this.loadPortfolio();
+      if(connected)this.bootstrapPortfolio();
       else this.safeRender();
     }else if(connected&&!wasConnected&&!this._portfolio){
       this.handleHaReady(false);
@@ -756,10 +756,11 @@ class InvestmentPanel extends HTMLElement {
   _handleHaDisconnectedEvent=()=>this.handleHaDisconnected(true);
   handleHaReady(render=true){
     this._haConnected=true;
-    if(this._portfolio||!this.isConnected)return;
+    if(!this.isConnected)return;
     this._bootstrapRetryAttempt=0;
     this.clearBootstrapRetry();
-    this.loadPortfolio(true);
+    if(this._portfolio)this.loadPortfolio(true);
+    else this.bootstrapPortfolio();
     if(render&&!this._portfolio)this.safeRender();
   }
   handleHaDisconnected(render=true){
@@ -792,14 +793,14 @@ class InvestmentPanel extends HTMLElement {
     this._bootstrapRetryTimer=setTimeout(()=>{
       this._bootstrapRetryTimer=null;
       if(this._portfolio||!this._haConnected||!this.isConnected)return;
-      this.loadPortfolio(true);
+      this.bootstrapPortfolio();
     },delay);
   }
   renderEmergencyError(error){
     const root=this.shadowRoot;if(!root)return;
     const message=error?.message||String(error||this.t("portfolioRenderFailed"));
     root.innerHTML=`<style>:host{display:block;min-height:100%;background:var(--primary-background-color);color:var(--primary-text-color);font-family:var(--paper-font-body1_-_font-family,system-ui,sans-serif)}.emergency{max-width:900px;margin:24px auto;padding:24px}.emergency-card{padding:24px;border:1px solid var(--divider-color);border-radius:18px;background:var(--card-background-color);box-shadow:var(--ha-card-box-shadow,0 2px 8px rgba(0,0,0,.08))}.emergency-card strong,.emergency-card small{display:block}.emergency-card small{margin-top:8px;color:var(--secondary-text-color);overflow-wrap:anywhere}.emergency-card button{margin-top:16px;border:0;border-radius:10px;padding:10px 14px;background:var(--primary-color);color:var(--text-primary-color,#fff);font:inherit;font-weight:700;cursor:pointer}</style><div class="emergency"><div class="emergency-card"><strong>${esc(this.t("portfolioRenderFailed"))}</strong><small>${esc(message)}</small><button id="portfolio-emergency-retry" type="button">${esc(this.t("retryPortfolio"))}</button></div></div>`;
-    root.getElementById("portfolio-emergency-retry")?.addEventListener("click",()=>this.loadPortfolio(true,true));
+    root.getElementById("portfolio-emergency-retry")?.addEventListener("click",()=>this._portfolio?this.loadPortfolio(true,true):this.bootstrapPortfolio());
   }
   safeRender(){
     try{this.render();return true;}
@@ -868,6 +869,57 @@ class InvestmentPanel extends HTMLElement {
       ${error?`<div class="source-update-error"><small>${esc(this.t("sourceUpdateError"))}</small><span>${esc(error)}</span></div>`:""}
       <div class="source-update-actions"><button type="button" class="secondary-btn source-update-check ${this._sourceUpdateChecking?"refreshing":""}" data-source-update-check ${!found||this._sourceUpdateChecking?"disabled":""} aria-busy="${this._sourceUpdateChecking?"true":"false"}"><span class="refresh-glyph">↻</span> ${esc(this._sourceUpdateChecking?this.t("sourceUpdateChecking"):this.t("sourceUpdateCheckNow"))}</button></div>
     </section>`;
+  }
+  applyPortfolioPayload(portfolio){
+    this._portfolio=portfolio;
+    this._loadFailed=false;
+    this._bootstrapRetryAttempt=0;
+    this.clearBootstrapRetry();
+    this._developerIndicatorUnlocked=!!portfolio?.developer_indicator_unlocked;
+    this._storedIncognito=!!portfolio?.incognito;
+    this._incognitoRevealSeconds=clamp(Math.trunc(Number(portfolio?.incognito_reveal_seconds??5)||0),0,300);
+    this._connectionLocal=portfolio?.connection_local===true;
+    this._remotePrivacyDefault=portfolio?.connection_local===false;
+    if(this._connectionLocal)this._incognitoSessionOverride=null;
+    const remotePrivacy=this._remotePrivacyDefault&&this._incognitoSessionOverride!==false;
+    this._incognito=this._storedIncognito||remotePrivacy||this._incognitoSessionOverride===true;
+    if(!this._indicationPreferencesLoaded&&portfolio?.indication_preferences){
+      this._indicationDraft=this.indicationDraftFromStored(portfolio.indication_preferences);
+      this._indicationPreferencesLoaded=true;
+    }
+    if(!this._searchCurrency)this._searchCurrency=String(portfolio?.base_currency||"EUR").toUpperCase();
+    const preference=String(portfolio?.language||"auto").toLowerCase();
+    this._preferredLang=(preference==="auto"||I18N[preference])?preference:"auto";
+    this.applyLanguage(this._preferredLang==="auto"?this._haLang:this._preferredLang);
+  }
+  async bootstrapPortfolio(){
+    if(!this._haConnected||!this.isConnected)return;
+    const seq=++this._portfolioSeq;
+    this._loading=true;this._loadFailed=false;this._error="";
+    if(!this._portfolio&&!this._addDraft)this.safeRender();
+    try{
+      const portfolio=await this.withTimeout(
+        this.call({type:"investment/get_portfolio",bootstrap:true}),
+        5000,
+        this.t("portfolioLoadTimeout")
+      );
+      if(seq!==this._portfolioSeq)return;
+      this.applyPortfolioPayload(portfolio);
+    }catch(e){
+      if(seq!==this._portfolioSeq)return;
+      this._error=e?.message||String(e);
+      this._loadFailed=!this._portfolio;
+      if(this._loadFailed&&this._haConnected)this.scheduleBootstrapRetry();
+    }finally{
+      if(seq!==this._portfolioSeq)return;
+      this._loading=false;
+      if(!this.safeRender())return;
+      if(this._portfolio?.bootstrap_local===true){
+        queueMicrotask(()=>{if(this._portfolioSeq===seq&&this.isConnected)this.loadPortfolio(true,false);});
+      }else if(this._portfolio){
+        this.loadDashboardHistory(false);
+      }
+    }
   }
   async loadPortfolio(force=false,refreshMarket=false){
     const seq=++this._portfolioSeq;
@@ -2538,7 +2590,7 @@ class InvestmentPanel extends HTMLElement {
     });
     if(portfolio){
       const ts=Math.max(Math.floor(Date.now()/1000),Number(portfolio.updated_at)||0,(history.at(-1)?.ts||0)+1);
-      const append=(key,value)=>{if(Number.isFinite(Number(value)))out[key].push({ts,value:Number(value)});};
+      const append=(key,value)=>{if(value!==null&&value!==undefined&&Number.isFinite(Number(value)))out[key].push({ts,value:Number(value)});};
       append("value",portfolio.total);append("pnl",portfolio.pnl);
     }
     return out;
@@ -2951,7 +3003,7 @@ class InvestmentPanel extends HTMLElement {
   bind(){
     const root=this.shadowRoot;
     root.getElementById("incognito")?.addEventListener("click",()=>this.toggleIncognito());
-    root.getElementById("portfolio-retry")?.addEventListener("click",()=>this.loadPortfolio(true,true));
+    root.getElementById("portfolio-retry")?.addEventListener("click",()=>this._portfolio?this.loadPortfolio(true,true):this.bootstrapPortfolio());
     root.getElementById("refresh")?.addEventListener("click",async e=>{
       const button=e.currentTarget;if(!button||button.disabled)return;
       button.disabled=true;button.classList.add("refreshing");button.setAttribute("aria-busy","true");
