@@ -4,7 +4,7 @@ from __future__ import annotations
 DOMAIN = "investment"
 NAME = "HA Investment"
 VERSION = "0.4.0"
-PANEL_ASSET_REVISION = "0.4.0-r44"
+PANEL_ASSET_REVISION = "0.4.0-r45"
 PANEL_URL = "investment"
 PANEL_NAME = "investment-panel-r44"
 PANEL_TITLE = "Investments"
