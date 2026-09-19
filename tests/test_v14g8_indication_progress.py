@@ -117,8 +117,8 @@ def test_v14g8_uses_fresh_progress_panel_identity():
     const = text("const.py")
     runtime = text("www/investment-panel-runtime.js")
     panel = text("www/investment-panel.js")
-    assert 'PANEL_ASSET_REVISION = "0.4.0-r49"' in const
-    assert 'PANEL_NAME = "investment-panel-r49"' in const
-    assert 'import "./investment-panel.js?v=0.4.0-r49";' in runtime
-    assert 'const Panel = customElements.get("investment-panel-r49")' in runtime
-    assert 'customElements.define("investment-panel-r49",InvestmentPanel)' in panel
+    assert 'PANEL_ASSET_REVISION = "0.4.0-r50"' in const
+    assert 'PANEL_NAME = "investment-panel-r50"' in const
+    assert 'import "./investment-panel.js?v=0.4.0-r50";' in runtime
+    assert 'const Panel = customElements.get("investment-panel-r50")' in runtime
+    assert 'customElements.define("investment-panel-r50",InvestmentPanel)' in panel
