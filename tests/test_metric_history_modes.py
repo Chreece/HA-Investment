@@ -21,7 +21,7 @@ def test_history_metrics_are_reconstructed_from_scope_ledger():
 
 def test_transaction_driven_metrics_use_distinct_history_presentations():
     assert 'if(metric==="costs"||metric==="assetFees")return "events";' in PANEL
-    assert 'if(metric==="costBasis"||metric==="invested")return "step";' in PANEL
+    assert 'if(metric==="costBasis"||metric==="invested"||metric==="quantity")return "step";' in PANEL
     assert 'if(metric==="pnl")return "divergence";' in PANEL
     assert 'kind==="step"?raw.flatMap' in PANEL
     assert 'class="trend-event-bar"' in PANEL
@@ -30,7 +30,7 @@ def test_transaction_driven_metrics_use_distinct_history_presentations():
 
 def test_pnl_history_has_semantic_zero_reference_and_divergence_fill():
     assert "trend-zero-line" in PANEL
-    assert 'if(metric==="pnl")return this.signClass(value)' in PANEL
+    assert 'if(["pnl","realized","unrealized"].includes(metric))return this.signClass(value);' in PANEL
     assert "investment-pnl-line" in PANEL
     assert "investment-pnl-area" in PANEL
     assert "const all=this.trendMetricPoints(tr)" in PANEL
@@ -40,7 +40,7 @@ def test_cost_and_fee_history_tooltips_snap_to_real_events():
     assert 'const deltas=this.trendMetricKind(tr.metric)==="events"?this.trendEventDeltas(win.points):null;' in PANEL
     assert 'if(deltas&&!(Number(deltas[index]?.value)>1e-12))return;' in PANEL
     assert 'kind==="events"?plottedValue:value' in PANEL
-    assert 'Σ ${this.money(value,tr.currency)}' in PANEL
+    assert 'Σ ${this.trendMetricFormat(value,tr)}' in PANEL
     assert "historyLargestEvent" in PANEL
     assert "historyEvents" in PANEL
 
