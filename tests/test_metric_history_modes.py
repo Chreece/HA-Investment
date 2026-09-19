@@ -19,15 +19,29 @@ def test_history_metrics_are_reconstructed_from_scope_ledger():
     assert "asset_fee_value" in PANEL
 
 
-def test_transaction_driven_metrics_use_step_presentation():
-    assert '["costBasis","invested","costs","assetFees"].includes(metric)?"step":"area"' in PANEL
+def test_transaction_driven_metrics_use_distinct_history_presentations():
+    assert 'if(metric==="costs"||metric==="assetFees")return "events";' in PANEL
+    assert 'if(metric==="costBasis"||metric==="invested")return "step";' in PANEL
+    assert 'if(metric==="pnl")return "divergence";' in PANEL
     assert 'kind==="step"?raw.flatMap' in PANEL
+    assert 'class="trend-event-bar"' in PANEL
+    assert "trendEventDeltas(points=[])" in PANEL
 
 
-def test_pnl_history_has_semantic_zero_reference_and_tooltip_tone():
+def test_pnl_history_has_semantic_zero_reference_and_divergence_fill():
     assert "trend-zero-line" in PANEL
     assert 'if(metric==="pnl")return this.signClass(value)' in PANEL
+    assert "investment-pnl-line" in PANEL
+    assert "investment-pnl-area" in PANEL
     assert "const all=this.trendMetricPoints(tr)" in PANEL
+
+
+def test_cost_and_fee_history_tooltips_snap_to_real_events():
+    assert 'this.trendMetricKind(tr.metric)!=="events"' in PANEL
+    assert 'kind==="events"?plottedValue:value' in PANEL
+    assert 'Σ ${this.money(value,tr.currency)}' in PANEL
+    assert "historyLargestEvent" in PANEL
+    assert "historyEvents" in PANEL
 
 
 def test_period_reload_preserves_selected_metric():
