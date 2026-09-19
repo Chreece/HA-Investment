@@ -1,7 +1,7 @@
 """Source update entity for the alternate integration line."""
 from __future__ import annotations
 
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 import logging
 from pathlib import Path
 import re
@@ -83,6 +83,11 @@ class HAInvestmentSourceUpdate(UpdateEntity):
         )
         self._installed_sha: str | None = None
         self._latest_sha: str | None = None
+        self._source_head_sha: str | None = None
+        self._source_head_validated: bool | None = None
+        self._last_checked_at: str | None = None
+        self._last_check_success: bool | None = None
+        self._last_check_error: str | None = None
 
     @override
     def version_is_newer(self, latest_version: str, installed_version: str) -> bool:
@@ -99,9 +104,11 @@ class HAInvestmentSourceUpdate(UpdateEntity):
             ready = await self._async_revision_ready(head_sha)
         except Exception as err:
             _LOGGER.warning("Source revision check failed during setup: %s", err)
+            self._record_check_failure(err)
             self._sync_versions()
             return
 
+        self._record_check_success(head_sha, ready)
         self._latest_sha = head_sha if ready else self._installed_sha
 
         if self._installed_sha is None and ready:
@@ -133,10 +140,15 @@ class HAInvestmentSourceUpdate(UpdateEntity):
             ready = await self._async_revision_ready(head_sha)
         except Exception as err:
             _LOGGER.debug("Source revision check failed: %s", err)
+            self._record_check_failure(err)
+            self._sync_versions()
+            self.async_write_ha_state()
             return
 
+        self._record_check_success(head_sha, ready)
         self._latest_sha = head_sha if ready else self._installed_sha
         self._sync_versions()
+        self.async_write_ha_state()
 
     @override
     async def async_install(
@@ -151,7 +163,9 @@ class HAInvestmentSourceUpdate(UpdateEntity):
 
         try:
             target_sha = await self._async_fetch_head_sha()
-            if not await self._async_revision_ready(target_sha):
+            ready = await self._async_revision_ready(target_sha)
+            self._record_check_success(target_sha, ready)
+            if not ready:
                 raise HomeAssistantError("Source revision has not passed validation")
 
             self._latest_sha = target_sha
@@ -256,8 +270,35 @@ class HAInvestmentSourceUpdate(UpdateEntity):
     async def _async_save_installed_sha(self, sha: str) -> None:
         await self._store.async_save({"installed_sha": sha})
 
+    def _record_check_success(self, head_sha: str, ready: bool) -> None:
+        """Record one completed GitHub/validation check for UI diagnostics."""
+        self._source_head_sha = head_sha
+        self._source_head_validated = bool(ready)
+        self._last_checked_at = datetime.now(UTC).isoformat()
+        self._last_check_success = True
+        self._last_check_error = None
+
+    def _record_check_failure(self, err: Exception) -> None:
+        """Record a failed source check without discarding the last known versions."""
+        self._last_checked_at = datetime.now(UTC).isoformat()
+        self._last_check_success = False
+        self._last_check_error = str(err)[:500]
+
     def _sync_versions(self) -> None:
         self._attr_installed_version = (
             _display_sha(self._installed_sha) if self._installed_sha else "local"
         )
         self._attr_latest_version = _display_sha(self._latest_sha)
+        self._attr_extra_state_attributes = {
+            "investment_source_update": True,
+            "source_repository": _SOURCE_REPOSITORY,
+            "source_ref": _SOURCE_REF,
+            "installed_revision": self._installed_sha,
+            "latest_validated_revision": self._latest_sha,
+            "source_head_revision": self._source_head_sha,
+            "source_head_validated": self._source_head_validated,
+            "last_checked_at": self._last_checked_at,
+            "last_check_success": self._last_check_success,
+            "last_check_error": self._last_check_error,
+            "scan_interval_minutes": int(SCAN_INTERVAL.total_seconds() // 60),
+        }
