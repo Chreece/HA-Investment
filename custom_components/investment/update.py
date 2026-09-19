@@ -165,6 +165,8 @@ class HAInvestmentSourceUpdate(UpdateEntity):
             target_sha = await self._async_fetch_head_sha()
             ready = await self._async_revision_ready(target_sha)
             self._record_check_success(target_sha, ready)
+            self._sync_versions()
+            self.async_write_ha_state()
             if not ready:
                 raise HomeAssistantError("Source revision has not passed validation")
 
