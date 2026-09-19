@@ -4,7 +4,7 @@ from __future__ import annotations
 DOMAIN = "investment"
 NAME = "HA Investment"
 VERSION = "0.4.0"
-PANEL_ASSET_REVISION = "0.4.0-r54"
+PANEL_ASSET_REVISION = "0.4.0-r55"
 PANEL_URL = "investment"
 PANEL_NAME = f"investment-panel-{PANEL_ASSET_REVISION.rsplit('-', 1)[-1]}"
 PANEL_TITLE = "Investments"
