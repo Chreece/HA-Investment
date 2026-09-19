@@ -3216,6 +3216,7 @@ class InvestmentManager:
                 risk_tolerance,
                 amount,
                 max_candidate_fraction=effective_max_candidate_fraction,
+                max_candidate_fraction_is_hard=max_candidate_pct is not None,
                 whole_units_only=whole_units_only,
                 whole_unit_categories=whole_unit_categories,
             )
@@ -3229,7 +3230,7 @@ class InvestmentManager:
 
         allocation.update(
             {
-                "construction": "v12c_corrected_v11_activation_blend",
+                "construction": "v13_validated_global_discrete_lot_projection",
                 "signal_scaffold_risk": SIGNAL_SCAFFOLD_RISK,
                 "signal_strategy_validation": (
                     "v13_validated"
