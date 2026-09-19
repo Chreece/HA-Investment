@@ -178,6 +178,7 @@ async def ws_quote(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None
         vol.Optional("settlement_currency"): vol.All(str, vol.Length(min=3, max=3)),
         vol.Optional("fx_rate"): vol.Any(None, vol.Coerce(float)),
         vol.Optional("trade_fx_rate"): vol.Any(None, vol.Coerce(float)),
+        vol.Optional("holding_provider_id"): vol.All(str, vol.Length(max=80)),
     }
 )
 @websocket_api.async_response
@@ -205,6 +206,7 @@ async def ws_add(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
             settlement_currency=msg.get("settlement_currency"),
             fx_rate=msg.get("fx_rate"),
             trade_fx_rate=msg.get("trade_fx_rate"),
+            holding_provider_id=msg.get("holding_provider_id"),
         )
         connection.send_result(msg["id"], {"holding": holding})
     except Exception as err:
@@ -289,6 +291,7 @@ async def ws_sell(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
         vol.Optional("settlement_currency"): vol.All(str, vol.Length(min=3, max=3)),
         vol.Optional("fx_rate"): vol.Any(None, vol.Coerce(float)),
         vol.Optional("trade_fx_rate"): vol.Any(None, vol.Coerce(float)),
+        vol.Optional("holding_provider_id"): vol.All(str, vol.Length(max=80)),
     }
 )
 @websocket_api.async_response
@@ -319,6 +322,7 @@ async def ws_edit_transaction(hass: HomeAssistant, connection, msg: dict[str, An
             settlement_currency=msg.get("settlement_currency"),
             fx_rate=msg.get("fx_rate"),
             trade_fx_rate=msg.get("trade_fx_rate"),
+            holding_provider_id=msg.get("holding_provider_id"),
         )
         connection.send_result(msg["id"], {"holding": holding})
     except Exception as err:

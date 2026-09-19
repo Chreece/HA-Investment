@@ -345,10 +345,22 @@ class InvestmentStore:
         trade_fx_source: str | None = None,
         shared_allocations: list[dict[str, Any]] | None = None,
         shared_ownership: dict[str, Any] | None = None,
+        holding_provider_id: str | None = None,
     ) -> dict[str, Any]:
         """Add an asset purchase and preserve its transaction costs."""
         async with self._lock:
             user = self._ensure_user(user_id)
+            normalized_holding_provider_id = (
+                None if holding_provider_id is None else str(holding_provider_id).strip()[:80]
+            )
+            if normalized_holding_provider_id:
+                valid_provider_ids = {
+                    str(provider.get("id") or "")
+                    for provider in user.get("holding_providers", [])
+                    if isinstance(provider, dict)
+                }
+                if normalized_holding_provider_id not in valid_provider_ids:
+                    raise ValueError("Unknown holding provider")
             quantity = max(0.0, float(quantity))
             average_buy_price = (
                 None if average_buy_price is None else round(max(0.0, float(average_buy_price)), 12)
@@ -438,6 +450,8 @@ class InvestmentStore:
                         old_gross, old_average, gross_quantity, average_buy_price
                     )
                     existing.setdefault("transactions", []).append(transaction)
+                    if normalized_holding_provider_id is not None:
+                        existing["holding_provider_id"] = normalized_holding_provider_id
                     self._recompute_holding_aggregate(existing)
                     await self._store.async_save(self._data)
                     return deepcopy(existing)
@@ -455,7 +469,7 @@ class InvestmentStore:
                 "shared_quantity": round(sum(float(a["quantity"]) for a in shared_allocations), 12),
                 "custody_quantity": round(quantity, 12),
                 "average_buy_price": average_buy_price,
-                "holding_provider_id": "",
+                "holding_provider_id": normalized_holding_provider_id or "",
                 "transactions": [transaction],
             }
             user["holdings"].append(holding)

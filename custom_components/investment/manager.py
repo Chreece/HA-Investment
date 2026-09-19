@@ -321,6 +321,7 @@ class InvestmentManager:
         trade_fx_rate: float | None = None,
         shared_allocations: list[dict[str, Any]] | None = None,
         shared_ownership: dict[str, Any] | None = None,
+        holding_provider_id: str | None = None,
     ) -> dict[str, Any]:
         """Append a BUY while preserving native trade and settlement currencies."""
         if asset.get("provider") not in self.providers:
@@ -427,6 +428,7 @@ class InvestmentManager:
             quote_fx_rate=(trade_to_settlement * settlement_to_base), trade_fx_rate=trade_to_settlement,
             fx_date=fx_date or transaction_date, fx_source=fx_source, trade_fx_source=trade_fx_source,
             shared_allocations=shared_allocations, shared_ownership=shared_ownership,
+            holding_provider_id=holding_provider_id,
         )
         self._cache.clear_prefix(("portfolio", user_id))
         self._cache.clear_prefix(("scope_history", user_id))
@@ -546,9 +548,21 @@ class InvestmentManager:
         trade_fx_rate: float | None = None,
         shared_allocations: list[dict[str, Any]] | None = None,
         shared_ownership: dict[str, Any] | None = None,
+        holding_provider_id: str | None = None,
     ) -> dict[str, Any]:
         """Edit one transaction, preserving native currency truth and rerunning FIFO."""
         user = await self.store.async_user(user_id)
+        normalized_holding_provider_id = (
+            None if holding_provider_id is None else str(holding_provider_id).strip()[:80]
+        )
+        if normalized_holding_provider_id:
+            valid_provider_ids = {
+                str(provider.get("id") or "")
+                for provider in user.get("holding_providers", [])
+                if isinstance(provider, dict)
+            }
+            if normalized_holding_provider_id not in valid_provider_ids:
+                raise ValueError("Unknown holding provider")
         holding = next((item for item in user.get("holdings", []) if item.get("id") == holding_id), None)
         if holding is None:
             raise ValueError("Holding not found")
@@ -715,6 +729,12 @@ class InvestmentManager:
 
         updated = await self.store.async_replace_transaction(user_id, holding_id, transaction_id, replacement)
         if updated is None: raise ValueError("Transaction not found")
+        if normalized_holding_provider_id is not None:
+            provider_updated = await self.store.async_update_holding(
+                user_id, holding_id, {"holding_provider_id": normalized_holding_provider_id}
+            )
+            if provider_updated is not None:
+                updated = provider_updated
         self._cache.clear_prefix(("portfolio", user_id)); self._cache.clear_prefix(("scope_history", user_id))
         return updated
 
