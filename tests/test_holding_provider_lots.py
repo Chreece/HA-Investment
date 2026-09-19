@@ -36,6 +36,6 @@ def test_trend_preview_values_are_pointer_near_and_interactive():
     assert ".trend-pop.preview{pointer-events:auto}" in panel
     assert "data-trend-tooltip-change" in panel
     assert "showTrendPoint(chart,globalIndex,clientX=null,clientY=null)" in panel
-    assert "loadTrend(scope,id,anchor,period,{x:intent.x,y:intent.y})" in panel
+    assert "loadTrend(scope,id,anchor,period,{x:intent.x,y:intent.y},intent.metric)" in panel
     assert "},260);" in panel
     assert 'if(this._trendPinned||e.target.closest("button"))return;' in panel
