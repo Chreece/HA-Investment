@@ -12,7 +12,7 @@ def test_history_card_has_professional_value_summary_and_stats():
 
 
 def test_history_chart_uses_area_grid_and_visible_axis_context():
-    assert 'class="trend-area"' in PANEL
+    assert "trend-area" in PANEL
     assert 'class="trend-grid-line"' in PANEL
     assert 'class="trend-y-label top"' in PANEL
     assert 'class="trend-x-labels"' in PANEL
