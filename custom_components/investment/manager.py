@@ -1079,6 +1079,204 @@ class InvestmentManager:
         """Return current opt-in automation entity selections."""
         return await self.store.async_entity_exposure_snapshot()
 
+    async def async_portfolio_bootstrap(self, user_id: str) -> dict[str, Any]:
+        """Return a network-free portfolio shell for immediate first paint.
+
+        The stored transaction ledger is authoritative for holdings, quantities and
+        provider locations. Market price/value/P&L fields deliberately stay unknown
+        until the normal portfolio refresh completes in the background.
+        """
+        key = ("portfolio", user_id)
+        cached = self._cache.get(key, DEFAULT_QUOTE_CACHE_SECONDS)
+        if cached is not None:
+            cached["bootstrap_local"] = False
+            return cached
+
+        user = await self.store.async_user(user_id)
+        base = str(user.get("base_currency") or "EUR")
+        provider_names = {
+            str(provider.get("id") or ""): str(provider.get("name") or "")
+            for provider in (user.get("holding_providers") or [])
+            if isinstance(provider, dict)
+        }
+        holdings_out: list[dict[str, Any]] = []
+        category_counts: dict[str, int] = defaultdict(int)
+
+        for holding in user.get("holdings") or []:
+            item = deepcopy(holding)
+            records: list[dict[str, Any]] = []
+            transactions = list(holding.get("transactions") or [])
+            for tx in transactions:
+                tx_type = str(tx.get("type") or "buy")
+                record = deepcopy(tx)
+                record["sort_ts"] = transaction_timestamp(tx)
+                record["explicit_costs"] = 0.0
+                if tx_type == "sell":
+                    record["quantity"] = max(0.0, float(tx.get("quantity") or 0))
+                    record["net_proceeds"] = None
+                    record["native_unit_price"] = tx.get("sell_price")
+                    record["native_net_proceeds"] = tx.get("proceeds_total")
+                else:
+                    record["quantity"] = personal_quantity(tx)
+                    record["cash_principal"] = None
+                    record["native_unit_price"] = tx.get("buy_price")
+                    record["native_cash_principal"] = tx.get("investment_total")
+                record["native_display_costs"] = tx.get("cost_total")
+                records.append(record)
+
+            try:
+                ledger = fifo_summary(records, current_price=None)
+                quantity = float(ledger.quantity)
+                ledger_rows = ledger.rows
+                provider_balances = holding_provider_balances(
+                    ledger.rows, provider_names
+                )
+            except Exception as err:
+                _LOGGER.debug(
+                    "Could not build local bootstrap ledger for %s: %s",
+                    holding.get("id"),
+                    err,
+                )
+                quantity = max(0.0, float(holding.get("quantity") or 0))
+                ledger_rows = []
+                provider_balances = []
+
+            shared = float(holding.get("shared_quantity") or 0)
+            item.update(
+                {
+                    "status": "bootstrap",
+                    "base_currency": base,
+                    "quote_currency": holding.get("currency") or base,
+                    "quantity": quantity,
+                    "net_quantity": quantity,
+                    "personal_quantity": quantity,
+                    "shared_quantity": shared,
+                    "custody_quantity": float(
+                        holding.get("custody_quantity") or quantity + shared
+                    ),
+                    "price": None,
+                    "value": None,
+                    "previous_value": None,
+                    "today_change": None,
+                    "today_pct": None,
+                    "unit_pnl": None,
+                    "unit_pnl_pct": None,
+                    "unit_all_in_cost": None,
+                    "cost_basis": None,
+                    "cost_basis_complete": False,
+                    "asset_principal": None,
+                    "other_cost_total": None,
+                    "all_in_cost": None,
+                    "lifetime_buy_cash": None,
+                    "total_sell_proceeds": None,
+                    "realized_pnl": None,
+                    "unrealized_pnl": None,
+                    "unrealized_pnl_pct": None,
+                    "pnl": None,
+                    "pnl_pct": None,
+                    "transaction_count": len(transactions),
+                    "ledger_rows": ledger_rows,
+                    "holding_provider_balances": provider_balances,
+                    "source": None,
+                    "delayed": None,
+                }
+            )
+            holdings_out.append(item)
+            category_counts[str(item.get("category") or "other")] += 1
+
+        categories = [
+            {
+                "category": category,
+                "value": None,
+                "today_change": None,
+                "today_pct": None,
+                "manual_expense": (
+                    float((user.get("category_expenses") or {}).get(category))
+                    if (user.get("category_expenses") or {}).get(category) is not None
+                    else None
+                ),
+                "calculated_cost_basis": None,
+                "cost_basis": None,
+                "cost_basis_source": None,
+                "transaction_cost_breakdown": {},
+                "transaction_cost_total": None,
+                "asset_fee_value": None,
+                "embedded_asset_fee_cost": None,
+                "settlement_deduction": None,
+                "gross_trade_value": None,
+                "asset_principal": None,
+                "other_cost_total": None,
+                "all_in_cost": None,
+                "lifetime_buy_cash": None,
+                "total_sell_proceeds": None,
+                "realized_pnl": None,
+                "unrealized_pnl": None,
+                "pnl": None,
+                "pnl_pct": None,
+                "count": count,
+            }
+            for category, count in sorted(category_counts.items())
+        ]
+
+        return {
+            "base_currency": base,
+            "language": str(user.get("language") or DEFAULT_UI_LANGUAGE),
+            "incognito": bool(user.get("incognito", False)),
+            "incognito_reveal_seconds": int(
+                user.get(
+                    "incognito_reveal_seconds",
+                    DEFAULT_INCOGNITO_REVEAL_SECONDS,
+                )
+            ),
+            "developer_indicator_unlocked": bool(
+                user.get("developer_indicator_unlocked", False)
+            ),
+            "indication_disclaimer_version": int(
+                user.get("indication_disclaimer_version") or 0
+            ),
+            "indication_disclaimer_accepted_at": user.get(
+                "indication_disclaimer_accepted_at"
+            ),
+            "indication_disclaimer_region": user.get(
+                "indication_disclaimer_region"
+            ),
+            "indication_disclaimer_language": user.get(
+                "indication_disclaimer_language"
+            ),
+            "required_indication_disclaimer_version": INDICATION_DISCLAIMER_VERSION,
+            "supported_indication_legal_regions": list(INDICATION_LEGAL_REGIONS),
+            "indication_preferences": deepcopy(
+                user.get("indication_preferences")
+                or DEFAULT_INDICATION_PREFERENCES
+            ),
+            "exposed_entities": list(user.get("exposed_entities") or []),
+            "holding_providers": deepcopy(user.get("holding_providers") or []),
+            "total": None,
+            "today_change": None,
+            "today_pct": None,
+            "cost_basis": None,
+            "transaction_cost_breakdown": {},
+            "transaction_cost_total": None,
+            "asset_fee_value": None,
+            "embedded_asset_fee_cost": None,
+            "settlement_deduction": None,
+            "gross_trade_value": None,
+            "asset_principal": None,
+            "other_cost_total": None,
+            "all_in_cost": None,
+            "lifetime_buy_cash": None,
+            "total_sell_proceeds": None,
+            "realized_pnl": None,
+            "unrealized_pnl": None,
+            "pnl": None,
+            "pnl_pct": None,
+            "categories": categories,
+            "holdings": holdings_out,
+            "updated_at": int(time.time()),
+            "market_refreshed": False,
+            "bootstrap_local": True,
+        }
+
     async def async_set_base_currency(self, user_id: str, currency: str) -> dict[str, Any]:
         """Backward-compatible currency preference helper."""
         return await self.async_set_preferences(user_id, base_currency=currency)
