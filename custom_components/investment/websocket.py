@@ -85,11 +85,21 @@ def _connection_is_local(connection: websocket_api.ActiveConnection) -> bool:
         return False
 
 
-@websocket_api.websocket_command({vol.Required("type"): "investment/get_portfolio", vol.Optional("force", default=False): bool, vol.Optional("refresh_market", default=False): bool})
+@websocket_api.websocket_command({vol.Required("type"): "investment/get_portfolio", vol.Optional("force", default=False): bool, vol.Optional("refresh_market", default=False): bool, vol.Optional("bootstrap", default=False): bool})
 @websocket_api.async_response
 async def ws_get_portfolio(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
     try:
-        result = await _manager(hass).async_portfolio(_user_id(connection), force=msg["force"], refresh_market=msg["refresh_market"])
+        manager = _manager(hass)
+        user_id = _user_id(connection)
+        result = (
+            await manager.async_portfolio_bootstrap(user_id)
+            if msg["bootstrap"]
+            else await manager.async_portfolio(
+                user_id,
+                force=msg["force"],
+                refresh_market=msg["refresh_market"],
+            )
+        )
         # Connection locality is session-specific and must never be cached inside
         # the portfolio object itself. It drives the frontend's privacy-safe remote default.
         payload = dict(result)
