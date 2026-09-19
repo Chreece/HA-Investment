@@ -33,7 +33,7 @@ def test_dashboard_kpis_use_metric_specific_visual_grammars():
     assert 'metricMiniChartHtml(points,metric="value",tone="accent")' in PANEL
     assert 'metric==="costs"||metric==="assetFees"' in PANEL
     assert 'class="kpi-event-baseline"' in PANEL
-    assert 'metric==="pnl"&&min<=0&&max>=0' in PANEL
+    assert '(metric==="pnl"||metric==="realized")&&min<=0&&max>=0' in PANEL
     assert 'kind==="step"?raw.flatMap' in PANEL
     assert 'data-kpi-chart="${esc(metric)}"' in PANEL
 
