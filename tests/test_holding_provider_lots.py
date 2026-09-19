@@ -28,3 +28,4 @@ def test_frontend_assigns_provider_per_buy_and_shows_lot_provider():
     assert 'class="ledger-provider"' in panel
     assert "holding_provider_balances" in panel
     assert "data-holding-provider-select" not in panel
+    assert "data-expand=" not in panel
