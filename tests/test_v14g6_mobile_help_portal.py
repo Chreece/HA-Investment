@@ -39,8 +39,8 @@ def test_v14g7_uses_fresh_component_identity():
     const = text("const.py")
     runtime = text("www/investment-panel-runtime.js")
     base = text("www/investment-panel.js")
-    assert 'PANEL_ASSET_REVISION = "0.4.0-r43"' in const
-    assert 'PANEL_NAME = "investment-panel-r43"' in const
-    assert 'import "./investment-panel.js?v=0.4.0-r43";' in runtime
-    assert 'const Panel = customElements.get("investment-panel-r43")' in runtime
-    assert 'customElements.define("investment-panel-r43",InvestmentPanel)' in base
+    assert 'PANEL_ASSET_REVISION = "0.4.0-r44"' in const
+    assert 'PANEL_NAME = "investment-panel-r44"' in const
+    assert 'import "./investment-panel.js?v=0.4.0-r44";' in runtime
+    assert 'const Panel = customElements.get("investment-panel-r44")' in runtime
+    assert 'customElements.define("investment-panel-r44",InvestmentPanel)' in base
