@@ -118,10 +118,7 @@ class InvestmentStore:
             user["category_expenses"] = {}
             changed = True
         for holding in user["holdings"]:
-            holding_provider_id = str(holding.get("holding_provider_id") or "").strip()[:80]
-            if holding.get("holding_provider_id") != holding_provider_id:
-                holding["holding_provider_id"] = holding_provider_id
-                changed = True
+            legacy_holding_provider_id = str(holding.get("holding_provider_id") or "").strip()[:80]
             holding_currency = canonical_currency(holding.get("currency") or user.get("base_currency") or DEFAULT_BASE_CURRENCY)
             if holding.get("currency") != holding_currency:
                 holding["currency"] = holding_currency
@@ -163,6 +160,13 @@ class InvestmentStore:
                 changed = True
             for transaction in transactions:
                 changed = normalize_legacy_transaction(transaction) or changed
+                if str(transaction.get("type") or "buy") == "buy":
+                    transaction_provider_id = str(
+                        transaction.get("holding_provider_id") or legacy_holding_provider_id or ""
+                    ).strip()[:80]
+                    if transaction.get("holding_provider_id") != transaction_provider_id:
+                        transaction["holding_provider_id"] = transaction_provider_id
+                        changed = True
                 trade_currency = canonical_currency(transaction.get("transaction_currency") or holding.get("currency") or user.get("base_currency") or DEFAULT_BASE_CURRENCY)
                 default_settlement = default_settlement_currency(trade_currency)
                 settlement_currency = canonical_currency(transaction.get("settlement_currency") or transaction.get("fee_currency") or default_settlement)
@@ -190,6 +194,9 @@ class InvestmentStore:
                     transaction["trade_fx_source"] = "identity" if trade_currency == settlement_currency else transaction.get("fx_source") or "historical"; changed = True
                 if not transaction.get("fx_source"):
                     transaction["fx_source"] = "identity" if settlement_currency == portfolio_currency else "historical"; changed = True
+            if "holding_provider_id" in holding:
+                holding.pop("holding_provider_id", None)
+                changed = True
         return changed
 
     def _ensure_user(self, user_id: str) -> dict[str, Any]:
@@ -258,9 +265,11 @@ class InvestmentStore:
             if holding_providers is not None:
                 requested_ids = {provider["id"] for provider in holding_providers}
                 assigned_ids = {
-                    str(holding.get("holding_provider_id") or "")
+                    str(transaction.get("holding_provider_id") or "")
                     for holding in user.get("holdings", [])
-                    if holding.get("holding_provider_id")
+                    for transaction in (holding.get("transactions") or [])
+                    if str(transaction.get("type") or "buy") == "buy"
+                    and transaction.get("holding_provider_id")
                 }
                 missing_ids = assigned_ids - requested_ids
                 if missing_ids:
@@ -412,6 +421,7 @@ class InvestmentStore:
                 "shared_ownership": shared_ownership,
                 "shared_quantity": round(sum(float(a["quantity"]) for a in shared_allocations), 12),
                 "personal_quantity": round(owner_quantity, 12),
+                "holding_provider_id": normalized_holding_provider_id or "",
                 "asset_fee_quantity": asset_fee_quantity,
                 "asset_fee_percent": asset_fee_percent,
                 "buy_price": average_buy_price,
@@ -450,8 +460,6 @@ class InvestmentStore:
                         old_gross, old_average, gross_quantity, average_buy_price
                     )
                     existing.setdefault("transactions", []).append(transaction)
-                    if normalized_holding_provider_id is not None:
-                        existing["holding_provider_id"] = normalized_holding_provider_id
                     self._recompute_holding_aggregate(existing)
                     await self._store.async_save(self._data)
                     return deepcopy(existing)
@@ -469,7 +477,6 @@ class InvestmentStore:
                 "shared_quantity": round(sum(float(a["quantity"]) for a in shared_allocations), 12),
                 "custody_quantity": round(quantity, 12),
                 "average_buy_price": average_buy_price,
-                "holding_provider_id": normalized_holding_provider_id or "",
                 "transactions": [transaction],
             }
             user["holdings"].append(holding)
@@ -684,25 +691,15 @@ class InvestmentStore:
         Quantity and cost basis are intentionally excluded: transaction history
         is authoritative from v0.3.0 onward.
         """
-        allowed = {"category", "holding_provider_id"}
+        allowed = {"category"}
         async with self._lock:
             user = self._ensure_user(user_id)
-            valid_provider_ids = {
-                str(provider.get("id") or "")
-                for provider in user.get("holding_providers", [])
-                if isinstance(provider, dict)
-            }
             for holding in user["holdings"]:
                 if holding["id"] != holding_id:
                     continue
                 for key, value in changes.items():
-                    if key not in allowed:
-                        continue
-                    if key == "holding_provider_id":
-                        value = str(value or "").strip()[:80]
-                        if value and value not in valid_provider_ids:
-                            raise ValueError("Unknown holding provider")
-                    holding[key] = value
+                    if key in allowed:
+                        holding[key] = value
                 await self._store.async_save(self._data)
                 return deepcopy(holding)
         return None
