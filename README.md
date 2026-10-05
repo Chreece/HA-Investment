@@ -7,9 +7,6 @@
 
 # HA Investment
 
-💙 **Enjoying this hobby project? [Send a voluntary thank-you via Ko-fi](https://ko-fi.com/chreece).**
-
-
 A **free, multi-user investment portfolio for Home Assistant**. Search and add stocks, ETFs, funds, crypto, indices, commodities/futures and FX instruments, then track current value, today's move, cost-basis profit/loss and historical trends directly inside Home Assistant.
 
 > **No paid API subscription is required.** The default provider stack uses public/no-key endpoints and caches responses to reduce load. Market-data availability and delay depend on the source and exchange.
