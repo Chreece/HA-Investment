@@ -5,6 +5,9 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
+defaults:
+  run:
+    shell: bash
 jobs:
   independent-audit:
     runs-on: ubuntu-latest
@@ -31,11 +34,10 @@ jobs:
           for file in custom_components/investment/www/*.js; do node --check "$file"; done
       - name: Run independent adversarial and statistical experiments
         run: python audit/scientific_safety.py | tee audit-results/independent-audit.txt
-      - name: Run retrospective market experiment when present
-        run: |
-          if [ -f audit/retrospective_market.py ]; then
-            python audit/retrospective_market.py | tee audit-results/market-audit.txt
-          fi
+      - name: Run eligibility guard counterfactual
+        run: python audit/eligibility_prototype.py | tee audit-results/eligibility-prototype.txt
+      - name: Run retrospective market experiment
+        run: python audit/retrospective_market.py | tee audit-results/market-audit.txt
       - uses: actions/upload-artifact@v4
         if: always()
         with:
