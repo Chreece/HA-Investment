@@ -3,28 +3,84 @@ on:
   push:
     branches: [work/indication-safety-20261006]
 permissions:
-  contents: read
+  contents: write
 defaults:
   run:
     shell: bash
 jobs:
-  snapshot:
+  verify-and-publish:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
+    env:
+      BASE: 5d0a72c65a5d122ac9e090a5f9bdd615ff157c49
+      REVIEW_BRANCH: fix/indication-safety-gates-20261006
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Package exact audited source and audit harness
-        run: |
-          mkdir -p /tmp/safety-source/production /tmp/safety-source/audit
-          git archive 5d0a72c65a5d122ac9e090a5f9bdd615ff157c49 | tar -x -C /tmp/safety-source/production
-          git archive 9605b93b09ac90519c02ee96beffebb28f88ed37 audit | tar -x -C /tmp/safety-source/audit
-          printf '%s\n' 5d0a72c65a5d122ac9e090a5f9bdd615ff157c49 > /tmp/safety-source/BASE_COMMIT
-          tar -czf /tmp/safety-source.tar.gz -C /tmp safety-source
-          sha256sum /tmp/safety-source.tar.gz
-      - uses: actions/upload-artifact@v4
+      - uses: actions/setup-python@v5
         with:
-          name: safety-source-snapshot
-          path: /tmp/safety-source.tar.gz
-          retention-days: 7
+          python-version: '3.13'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install test runner
+        run: python -m pip install --disable-pip-version-check pytest
+      - name: Prepare exact locally tested changes on detached audited base
+        run: |
+          mkdir -p /tmp/safety-evidence
+          git worktree add --detach /tmp/safety-candidate "$BASE"
+          git show "$BASE:custom_components/investment/validated_model.py" > /tmp/original-validated_model.py
+          python workbench/apply_safety_v1.py /tmp/safety-candidate
+          mkdir -p /tmp/safety-candidate/docs
+          cp workbench/test_indication_safety_gates.py /tmp/safety-candidate/tests/
+          cp workbench/SAFETY_GATES_V1.md /tmp/safety-candidate/docs/
+          cd /tmp/safety-candidate
+          printf '%s\n' \
+            '6208be3c86b6a5abd06c78560bbbe93611c045977923ccc1b89ece52dbd59cea  custom_components/investment/validated_model.py' \
+            '103b598e0daacc9c0fec46db9a55528d4567eca603f2f4655b4c5211d4c5aa94  tests/test_indication_safety_gates.py' \
+            '38aab239a28520f8085306d53c20b558e22b2d4baf4b5b289dca44b1c43751a9  docs/SAFETY_GATES_V1.md' | sha256sum -c -
+      - name: Verify regressions fail on original code for the measured reasons
+        working-directory: /tmp/safety-candidate
+        run: |
+          python - <<'PY'
+          import os, subprocess, sys, xml.etree.ElementTree as ET
+          env = {**os.environ, 'INVESTMENT_SAFETY_MODEL': '/tmp/original-validated_model.py'}
+          with open('/tmp/safety-evidence/before.txt', 'w') as output:
+              result = subprocess.run([sys.executable, '-m', 'pytest', '-q', 'tests/test_indication_safety_gates.py', '--junitxml=/tmp/safety-evidence/before.xml'], env=env, stdout=output, stderr=subprocess.STDOUT)
+          suite = ET.parse('/tmp/safety-evidence/before.xml').getroot().find('testsuite')
+          summary = {k: int(suite.get(k, '0')) for k in ('tests','errors','failures','skipped')}
+          print('ORIGINAL_REGRESSION_RESULT', summary)
+          assert result.returncode == 1 and summary == {'tests':615,'errors':0,'failures':143,'skipped':0}
+          PY
+      - name: Validate patched source and all existing plus new tests
+        working-directory: /tmp/safety-candidate
+        run: |
+          python -m compileall -q custom_components/investment
+          for file in custom_components/investment/www/*.js; do node --check "$file"; done
+          python -m pytest -q tests --junitxml=/tmp/safety-evidence/after.xml | tee /tmp/safety-evidence/after.txt
+          python -m pip freeze > /tmp/safety-evidence/environment.txt
+          git diff --check
+      - name: Publish only the tested source, tests and documentation for review
+        working-directory: /tmp/safety-candidate
+        run: |
+          current_base="$(git ls-remote origin refs/heads/indications | cut -f1)"
+          test "$current_base" = "$BASE" || { echo 'Base moved; publication stopped'; exit 1; }
+          existing="$(git ls-remote origin "refs/heads/$REVIEW_BRANCH")"
+          test -z "$existing" || { echo 'Review branch already exists; no overwrite'; exit 1; }
+          git add custom_components/investment/validated_model.py tests/test_indication_safety_gates.py docs/SAFETY_GATES_V1.md
+          test "$(git diff --cached --name-only | wc -l)" = 3
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'Preserve approved candidates and fail closed on missing risk history'
+          git diff "$BASE" HEAD > /tmp/safety-evidence/changes.patch
+          git rev-parse HEAD | tee /tmp/safety-evidence/review-commit.txt
+          git archive --format=tar.gz HEAD -o /tmp/safety-evidence/tested-source.tar.gz
+          git push origin "HEAD:refs/heads/$REVIEW_BRANCH"
+          printf 'Published review branch only: %s\nNo merge or deployment performed.\n' "$REVIEW_BRANCH"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: safety-gates-v1-verification
+          path: /tmp/safety-evidence/
+          retention-days: 30
