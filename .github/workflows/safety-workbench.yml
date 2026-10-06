@@ -1,0 +1,30 @@
+name: Safety workbench
+on:
+  push:
+    branches: [work/indication-safety-20261006]
+permissions:
+  contents: read
+defaults:
+  run:
+    shell: bash
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Package exact audited source and audit harness
+        run: |
+          mkdir -p /tmp/safety-source/production /tmp/safety-source/audit
+          git archive 5d0a72c65a5d122ac9e090a5f9bdd615ff157c49 | tar -x -C /tmp/safety-source/production
+          git archive 9605b93b09ac90519c02ee96beffebb28f88ed37 audit | tar -x -C /tmp/safety-source/audit
+          printf '%s\n' 5d0a72c65a5d122ac9e090a5f9bdd615ff157c49 > /tmp/safety-source/BASE_COMMIT
+          tar -czf /tmp/safety-source.tar.gz -C /tmp safety-source
+          sha256sum /tmp/safety-source.tar.gz
+      - uses: actions/upload-artifact@v4
+        with:
+          name: safety-source-snapshot
+          path: /tmp/safety-source.tar.gz
+          retention-days: 7
