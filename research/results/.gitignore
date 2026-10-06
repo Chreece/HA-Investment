@@ -1,0 +1,4 @@
+# Expanded invalidated evidence is retained byte-for-byte in the verified
+# archive and in scratch. Do not accidentally stage restored duplicate copies.
+/portfolio-robustness-20261006-v1/
+/portfolio-robustness-20261006-v2/

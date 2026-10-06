@@ -56,6 +56,9 @@ from .indication import (
 )
 from .data_quality import assess_history_freshness, assess_quote_freshness, convert_history_with_observed_fx
 from .instrument_identity import IDENTITY_POLICY_VERSION, resolve_instrument_identity
+from .execution_costs import validate_execution_costs
+from .indication_positions import portfolio_ledger_fingerprint, position_quantity_evidence
+from .portfolio_plan import finalize_purchase_plan
 from .ledger import (
     fifo_summary,
     holding_provider_balances,
@@ -965,6 +968,25 @@ class InvestmentManager:
         if values["whole_units_only"]:
             whole_categories = list(INDICATION_WHOLE_UNIT_CATEGORIES)
         values["whole_unit_categories"] = whole_categories
+        costs = validate_execution_costs(values.get("execution_costs"))
+        if costs["status"] == "invalid":
+            raise ValueError("Invalid execution cost profile: " + ", ".join(costs["reasons"]))
+        values["execution_costs"] = (
+            {key: costs[key] for key in ("confirmed", "fixed_fee", "commission_pct", "spread_bps", "fx_bps")}
+            if values.get("execution_costs") is not None else None
+        )
+        cash = values.get("existing_cash", 0.0)
+        if isinstance(cash, bool) or not isinstance(cash, (int, float)) or not math.isfinite(cash) or not 0 <= cash <= 1e15:
+            raise ValueError("Existing cash must be a finite nonnegative amount")
+        values["existing_cash"] = float(cash)
+        maximum_loss = values.get("max_drawdown_pct")
+        if maximum_loss is not None and (isinstance(maximum_loss, bool) or not isinstance(maximum_loss, (int, float)) or not math.isfinite(maximum_loss) or not 0 < maximum_loss <= 100):
+            raise ValueError("Maximum drawdown must be greater than zero and at most 100")
+        values["max_drawdown_pct"] = maximum_loss
+        weeks = values.get("analysis_horizon_weeks")
+        if weeks is not None and (isinstance(weeks, bool) or not isinstance(weeks, int) or not 1 <= weeks <= 5200):
+            raise ValueError("Analysis horizon must be an integer from 1 to 5200 weeks")
+        values["analysis_horizon_weeks"] = weeks
         return values
 
     async def async_set_preferences(
@@ -2748,6 +2770,10 @@ class InvestmentManager:
         whole_unit_categories: list[str] | None = None,
         portfolio_context: str = "use",
         existing_instruments: str = "allow",
+        execution_costs: dict[str, Any] | None = None,
+        existing_cash: float = 0.0,
+        max_drawdown_pct: float | None = None,
+        analysis_horizon_weeks: int | None = None,
         response_language: str | None = None,
         progress_callback: Callable[[int, str, dict[str, Any] | None], None] | None = None,
     ) -> dict[str, Any]:
@@ -2842,14 +2868,22 @@ class InvestmentManager:
             "min_cash_reserve_pct": min_cash_reserve_pct, "whole_units_only": bool(whole_units_only),
             "whole_unit_categories": list(whole_unit_categories),
             "portfolio_context": portfolio_context, "existing_instruments": existing_instruments,
+            "execution_costs": execution_costs, "existing_cash": existing_cash,
+            "max_drawdown_pct": max_drawdown_pct, "analysis_horizon_weeks": analysis_horizon_weeks,
         })
+        execution_costs = remembered["execution_costs"]
+        existing_cash = remembered["existing_cash"]
+        max_drawdown_pct = remembered["max_drawdown_pct"]
+        analysis_horizon_weeks = remembered["analysis_horizon_weeks"]
         await self.store.async_set_preferences(user_id, indication_preferences=remembered)
         self._cache.clear_prefix(("portfolio", user_id))
 
         base = self._canonical_currency(user.get("base_currency") or "EUR")
         emit_progress(10, "portfolio_context")
         portfolio = await self.async_portfolio(user_id)
-        live_holdings = portfolio.get("holdings") or []
+        raw_holdings_snapshot = deepcopy(portfolio.get("holdings"))
+        recorded_ledger_fingerprint = portfolio_ledger_fingerprint(raw_holdings_snapshot)
+        live_holdings = raw_holdings_snapshot if isinstance(raw_holdings_snapshot, list) else []
         emit_progress(18, "portfolio_context", holdings=len(live_holdings))
         holding_by_key = {self._candidate_key(h): h for h in live_holdings}
         portfolio_total = float(portfolio.get("total") or 0)
@@ -3276,8 +3310,66 @@ class InvestmentManager:
                 results.append(value)
         if not results:
             raise ValueError("Market history is unavailable for all indication candidates")
+
+        # Independently validate every existing positive position, including
+        # holdings excluded from this purchase candidate set. Generic portfolio
+        # prices/FX and display-name classifications cannot certify this gate.
+        # Display aggregates may survive a market/FX timeout. Independently
+        # reconstruct personal units from the immutable local ledger.
+        existing_positions: list[dict[str, Any]] = []
+        evaluated_by_key = {self._candidate_key(item): item for item in results}
+        position_requests: list[tuple[dict[str, Any], float, dict[str, Any]]] = []
+        if portfolio_context == "use":
+            quantity_as_of = datetime.fromtimestamp(time.time(), dt_util.now().tzinfo or UTC)
+            for holding in live_holdings:
+                quantity_evidence = position_quantity_evidence(holding, as_of=quantity_as_of)
+                quantity = quantity_evidence["quantity"]
+                if quantity_evidence["status"] == "verified" and quantity == 0:
+                    continue
+                position_asset = {
+                    key: holding.get(key)
+                    for key in ("provider", "provider_id", "symbol", "name", "category", "exchange", "isin", "share_class", "share_class_currency", "income_treatment", "leverage_factor", "leveraged", "inverse", "high_yield", "replication", "currency_hedged")
+                    if holding.get(key) is not None
+                }
+                position_asset["currency"] = holding.get("quote_currency") or holding.get("currency")
+                if quantity_evidence["status"] != "verified":
+                    existing_positions.append({
+                        **position_asset, "quantity": None,
+                        "position_quantity_evidence": quantity_evidence,
+                        "data_quality_eligible": False, "instrument_identity_eligible": False,
+                        "input_evidence_contract": "source-time-and-exact-identity-v1",
+                        "input_evidence_blockers": quantity_evidence["reasons"],
+                    })
+                    continue
+                key = self._candidate_key(position_asset)
+                if key in evaluated_by_key:
+                    existing_positions.append({**evaluated_by_key[key], "quantity": quantity,
+                                               "position_quantity_evidence": quantity_evidence})
+                else:
+                    position_requests.append((position_asset, quantity, quantity_evidence))
+            if position_requests:
+                emit_progress(74, "portfolio_context", holdings=len(position_requests))
+                unique_requests = {self._candidate_key(asset): asset for asset, _, _ in position_requests}
+                position_results = await asyncio.gather(
+                    *(evaluate(asset, {}) for asset in unique_requests.values()), return_exceptions=True,
+                )
+                for key, position_result in zip(unique_requests, position_results, strict=True):
+                    if isinstance(position_result, Exception):
+                        evaluated_by_key[key] = {
+                            **unique_requests[key], "data_quality_eligible": False,
+                            "instrument_identity_eligible": False,
+                            "input_evidence_contract": "source-time-and-exact-identity-v1",
+                            "input_evidence_blockers": ["existing_position_evidence_unavailable"],
+                        }
+                    else:
+                        evaluated_by_key[key] = position_result
+                existing_positions.extend(
+                    {**evaluated_by_key[self._candidate_key(asset)], "quantity": quantity,
+                     "position_quantity_evidence": quantity_evidence}
+                    for asset, quantity, quantity_evidence in position_requests
+                )
         evidence_as_of = time.time()
-        for item in results:
+        for item in [*results, *existing_positions]:
             if not item.get("data_quality_eligible"):
                 continue
             blockers = refresh_evidence(item, evidence_as_of)
@@ -3455,6 +3547,53 @@ class InvestmentManager:
             }
         )
 
+        ledger_changed_during_analysis = False
+        portfolio_snapshot_issue = None
+
+        def finalize_portfolio_plan(*, ai: bool = False, diagnostics: bool = False) -> None:
+            nonlocal results, allocation, ai_allocation
+            rows, final_meta = finalize_purchase_plan(
+                results, amount, risk_tolerance,
+                existing_positions=existing_positions,
+                existing_cash=existing_cash if portfolio_context == "use" else 0.0,
+                execution_costs=execution_costs,
+                max_drawdown_loss=max_drawdown_pct / 100.0 if max_drawdown_pct is not None else None,
+                minimum_cash_reserve_fraction=min_cash_reserve_pct / 100.0,
+                max_candidate_fraction=effective_max_candidate_fraction,
+                # A failed account snapshot must also block purchase-only scope.
+                # Its sentinel is the only position when holdings were ignored.
+                portfolio_context="use" if portfolio_snapshot_issue else portfolio_context,
+                as_of=datetime.fromtimestamp(evidence_as_of, UTC).date(),
+                horizon_weeks=analysis_horizon_weeks,
+                amount_key="ai_suggested_amount" if ai else "suggested_amount",
+                units_key="ai_suggested_units" if ai else "suggested_units",
+                bootstrap_repetitions=128 if diagnostics else 0,
+            )
+            final_meta["portfolio_risk"]["scope"] = "complete_portfolio" if portfolio_context == "use" else "new_contribution_only"
+            final_meta["portfolio_risk"]["existing_position_issues"] = [
+                {"symbol": position.get("symbol"), "provider": position.get("provider"),
+                 "provider_id": position.get("provider_id"),
+                 "reasons": list(dict.fromkeys([
+                     *(position.get("position_quantity_evidence", {}).get("reasons") or []),
+                     *(position.get("input_evidence_blockers") or []),
+                 ])) or ["existing_position_evidence_unavailable"]}
+                for position in existing_positions
+                if position.get("position_quantity_evidence", {}).get("status") != "verified"
+                or position.get("data_quality_eligible") is not True
+                or position.get("instrument_identity_eligible") is not True
+            ]
+            final_meta["portfolio_risk"]["ledger_changed_during_analysis"] = ledger_changed_during_analysis
+            final_meta["portfolio_risk"]["portfolio_snapshot_issue"] = portfolio_snapshot_issue
+            results = rows
+            if ai:
+                ai_allocation = {**(ai_allocation or {}), **final_meta}
+            else:
+                allocation.update(final_meta)
+
+        # AI sees the affordable, full-portfolio constrained purchase ceilings.
+        ai_allocation = None
+        finalize_portfolio_plan()
+
         emit_progress(89, "risk_allocation", candidates=len(results))
         ai_review = None
         ai_allocation = None
@@ -3517,18 +3656,63 @@ class InvestmentManager:
             emit_progress(96, "ai_review")
 
         emit_progress(98, "finalizing")
+        try:
+            current_user = await self.store.async_user(user_id)
+            if self._canonical_currency(current_user.get("base_currency") or "EUR") != base:
+                ledger_changed_during_analysis = True
+                portfolio_snapshot_issue = "portfolio_currency_changed_during_analysis"
+            elif portfolio_context == "use":
+                current_fingerprint = portfolio_ledger_fingerprint(current_user.get("holdings"))
+                if recorded_ledger_fingerprint is None or current_fingerprint is None:
+                    portfolio_snapshot_issue = "portfolio_ledger_snapshot_unavailable"
+                elif current_fingerprint != recorded_ledger_fingerprint:
+                    ledger_changed_during_analysis = True
+                    portfolio_snapshot_issue = "portfolio_ledger_changed_during_analysis"
+        except Exception:
+            portfolio_snapshot_issue = "portfolio_ledger_snapshot_unavailable"
+        if portfolio_snapshot_issue:
+            # An unknown sentinel prevents the pure gate from certifying an
+            # obsolete ownership snapshot, including initially empty books.
+            existing_positions.append({
+                "symbol": "Portfolio", "provider": "internal", "provider_id": "portfolio_snapshot",
+                "quantity": None, "data_quality_eligible": False,
+                "instrument_identity_eligible": False,
+                "input_evidence_contract": "source-time-and-exact-identity-v1",
+                "input_evidence_blockers": [portfolio_snapshot_issue],
+                "position_quantity_evidence": {"status": "unknown", "reasons": [portfolio_snapshot_issue]},
+            })
+        # AI latency and selective purchase reductions cannot invalidate source
+        # evidence or remove a hedge without another complete portfolio check.
+        evidence_as_of = time.time()
+        final_evidence_changed = False
+        for item in [*results, *existing_positions]:
+            if item.get("data_quality_eligible") is True:
+                blockers = refresh_evidence(item, evidence_as_of)
+                if blockers:
+                    final_evidence_changed = True
+                    item.update(data_quality_eligible=False, allocation_eligible=False,
+                                activation=0.0, label="caution", input_evidence_blockers=blockers)
+                    item["warnings"] = list(dict.fromkeys([*(item.get("warnings") or []), *blockers]))
+        if portfolio_snapshot_issue or final_evidence_changed:
+            ai_review = None
+            for item in results:
+                if mode == "full_ai":
+                    item.update(ai_score=None, ai_reason="", ai_action="watch")
+        finalize_portfolio_plan(diagnostics=True)
+        if mode == "full_ai":
+            if amount is not None:
+                for item in results:
+                    for key in ("suggested_amount", "suggested_units"):
+                        item[f"ai_{key}"] = min(
+                            float(item.get(f"ai_{key}") or 0.0),
+                            float(item.get(key) or 0.0),
+                        )
+            finalize_portfolio_plan(ai=True, diagnostics=True)
         if (whole_units_only or whole_unit_categories) and amount is not None:
             unit_key = "ai_suggested_units" if mode == "full_ai" else "suggested_units"
             for item in results:
                 if bool(item.get("whole_units_only")):
                     item["whole_unit_selected"] = float(item.get(unit_key) or 0.0) >= 1.0
-            active_allocation = ai_allocation if mode == "full_ai" else allocation
-            amount_key = "ai_suggested_amount" if mode == "full_ai" else "suggested_amount"
-            deployed = round(sum(float(item.get(amount_key) or 0.0) for item in results), 2)
-            if active_allocation is not None:
-                active_allocation["deployed"] = deployed
-                active_allocation["cash_reserve"] = round(max(0.0, amount - deployed), 2)
-                active_allocation["deployment_fraction"] = round(deployed / amount, 4) if amount > 0 else 0.0
 
         return {
             "mode": mode,
@@ -3565,6 +3749,10 @@ class InvestmentManager:
                 "ai_uses_home_assistant_preferred": not bool(str(ai_task_entity_id or "").strip()),
                 "portfolio_context": portfolio_context,
                 "existing_instruments": existing_instruments,
+                "execution_costs": execution_costs,
+                "existing_cash": existing_cash,
+                "max_drawdown_pct": max_drawdown_pct,
+                "analysis_horizon_weeks": analysis_horizon_weeks,
             },
             "results": results,
             "excluded_candidates": excluded_candidates,

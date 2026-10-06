@@ -1,0 +1,23 @@
+{
+  "schema": "ha-investment-replay-execution-protocol-v1",
+  "purpose": "Make the existing replay's exact choices explicit; this document changes no trial inputs or computations",
+  "allocation_horizon": "medium",
+  "signal_strategy": "adaptive",
+  "signal_scaffold_risk": "very_high",
+  "minimum_data_reliability": 0.45,
+  "portfolio_overlap_policy": "allow",
+  "minimum_cash_reserve_fraction": 0.0,
+  "additional_manual_candidate_cap_fraction": 1.0,
+  "candidate_cap_equivalence": "No additional manual cap is mathematically equivalent to the explicit 100% UI setting; risk and sleeve constraints remain active",
+  "is_default_ui_configuration": false,
+  "execution_order_type": "currency_capped_next_observed_close_with_explicit_hypothetical_costs",
+  "preserves_approved_currency_principal_ceiling": true,
+  "preserves_previous_quote_estimated_unit_ceiling": false,
+  "lower_next_session_price": "May buy more units within the same approved principal; this is not exact parity with a previously entered unit-count order",
+  "higher_next_session_price": "Buys fewer units; never increases approved principal",
+  "missing_execution_price": "Rejects the order and retains cash",
+  "budget": "Prior unspent cash plus the new external monthly contribution; outside cash passed to the production finalizer is zero to avoid double counting",
+  "external_flows": "Only the new monthly contribution issues additional portfolio accounting units",
+  "risk_gate_interpretation": "Historical fixed-current-weight risk constraints at the decision date; not a bound on realized future losses, accumulated transaction-cost losses, or next-session price changes",
+  "unchanged_during_trials": true
+}

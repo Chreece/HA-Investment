@@ -1,0 +1,13 @@
+{
+  "schema": "ha-investment-replay-audit-v1",
+  "run_id": "portfolio-robustness-20261006-v3",
+  "checked": {
+    "trials": 84,
+    "daily_accounting_points": 64712,
+    "decisions": 3072,
+    "fills": 11141
+  },
+  "violations": [],
+  "passed": true,
+  "scope": "source/trace/ledger identity, time ordering, exact inception, minimum history, next-session observed fills, approved currency ceilings, all costs, whole units, nonnegative cash, held positions and deposit-neutral NAV; not a future-performance guarantee"
+}

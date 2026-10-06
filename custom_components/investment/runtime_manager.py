@@ -183,6 +183,10 @@ class InvestmentManager(CoreInvestmentManager):
         whole_unit_categories: list[str] | None = None,
         portfolio_context: str = "use",
         existing_instruments: str = "allow",
+        execution_costs: dict[str, Any] | None = None,
+        existing_cash: float = 0.0,
+        max_drawdown_pct: float | None = None,
+        analysis_horizon_weeks: int | None = None,
         response_language: str | None = None,
         progress_callback: Callable[[int, str, dict[str, Any] | None], None] | None = None,
     ) -> dict[str, Any]:
@@ -247,6 +251,10 @@ class InvestmentManager(CoreInvestmentManager):
                 whole_unit_categories=whole_unit_categories,
                 portfolio_context=portfolio_context,
                 existing_instruments=existing_instruments,
+                execution_costs=execution_costs,
+                existing_cash=existing_cash,
+                max_drawdown_pct=max_drawdown_pct,
+                analysis_horizon_weeks=analysis_horizon_weeks,
                 response_language=response_language,
                 progress_callback=progress_callback,
             )
