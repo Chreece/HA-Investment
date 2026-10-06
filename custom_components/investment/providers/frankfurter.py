@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from datetime import UTC, date, datetime, timedelta
+import math
 from collections.abc import Sequence
 
 from .base import MarketProvider, ProviderError
@@ -137,7 +138,14 @@ class FrankfurterProvider(MarketProvider):
             return 1.0, on_date
         params = {"date": on_date} if on_date else {}
         data = await self._get(f"rate/{base}/{quote}", **params)
-        return float(data["rate"]), str(data.get("date") or on_date or "") or None
+        raw_rate = data["rate"]
+        if isinstance(raw_rate, bool) or not math.isfinite(float(raw_rate)) or float(raw_rate) <= 0:
+            raise ProviderError(f"Invalid FX rate for {base}/{quote}")
+        if data.get("base") and str(data["base"]).upper() != base:
+            raise ProviderError(f"FX rate base mismatch for {base}/{quote}")
+        if data.get("quote") and str(data["quote"]).upper() != quote:
+            raise ProviderError(f"FX rate quote mismatch for {base}/{quote}")
+        return float(raw_rate), str(data.get("date") or on_date or "") or None
 
     async def async_quote(self, provider_id: str) -> Quote:
         base, quote = provider_id.upper().split("/", 1)
@@ -147,19 +155,27 @@ class FrankfurterProvider(MarketProvider):
         prev = history[-2].value if len(history) > 1 else None
         return Quote(price=rate, currency=quote, previous_close=prev, source=self.title, delayed=True)
 
-    async def async_history(self, provider_id: str, period: str) -> Sequence[HistoryPoint]:
+    async def async_history(
+        self, provider_id: str, period: str, *, raw_daily: bool = False
+    ) -> Sequence[HistoryPoint]:
         base, quote = provider_id.upper().split("/", 1)
         days = _HORIZON_DAYS.get(period, 35)
         start = date.today() - timedelta(days=days)
         params = {"base": base, "quotes": quote, "from": start.isoformat()}
-        if period in {"1y", "5y", "5y_risk"}:
+        if not raw_daily and period in {"1y", "5y", "5y_risk"}:
             params["group"] = "week" if period in {"1y", "5y_risk"} else "month"
         rows = await self._get("rates", **params)
         points: list[HistoryPoint] = []
         if isinstance(rows, list):
             for row in rows:
-                if str(row.get("quote", "")).upper() != quote:
+                if str(row.get("quote", "")).upper() != quote or (
+                    raw_daily and str(row.get("base", "")).upper() != base
+                ):
+                    if raw_daily:
+                        raise ProviderError(f"FX history pair mismatch for {provider_id}")
                     continue
+                if raw_daily and isinstance(row.get("rate"), bool):
+                    raise ProviderError(f"Invalid FX history rate for {provider_id}")
                 dt = date.fromisoformat(row["date"])
                 ts = int(datetime(dt.year, dt.month, dt.day, tzinfo=UTC).timestamp())
                 points.append(HistoryPoint(ts, float(row["rate"])))

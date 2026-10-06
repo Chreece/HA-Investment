@@ -17,6 +17,8 @@ jobs:
           node-version: "22"
       - name: Install test runner
         run: python -m pip install --disable-pip-version-check pytest
+      - name: Install frontend test DOM
+        run: npm install --prefix "$RUNNER_TEMP/investment-ui-test" linkedom@0.18.12 --no-audit --no-fund --ignore-scripts
       - name: Compile integration Python
         run: python -m compileall -q custom_components/investment
       - name: Syntax-check frontend JavaScript
@@ -24,7 +26,9 @@ jobs:
           for file in custom_components/investment/www/*.js; do
             node --check "$file"
           done
-      - name: Run pure Python regression tests
+      - name: Run Python and frontend regression tests
+        env:
+          INVESTMENT_UI_NODE_MODULES: ${{ runner.temp }}/investment-ui-test/node_modules
         run: python -m pytest -q tests
 
   hassfest:

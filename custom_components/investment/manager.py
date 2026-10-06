@@ -7,6 +7,7 @@ import logging
 import math
 import re
 import time
+from datetime import UTC, date, datetime
 from collections import defaultdict
 from copy import deepcopy
 from typing import Any, Callable
@@ -53,6 +54,8 @@ from .indication import (
     balanced_discovery_sample,
     candidate_region_compatible,
 )
+from .data_quality import assess_history_freshness, assess_quote_freshness, convert_history_with_observed_fx
+from .instrument_identity import IDENTITY_POLICY_VERSION, resolve_instrument_identity
 from .ledger import (
     fifo_summary,
     holding_provider_balances,
@@ -1386,6 +1389,37 @@ class InvestmentManager:
             self._cache.set(key, rate)
         return float(rate) * from_scale / to_scale
 
+    async def _validated_indication_fx_rate(self, currency: str, base: str) -> tuple[float, dict[str, Any]]:
+        """Keep the actual current FX observation date through caching."""
+        norm_currency, scale = self._normalize_currency(currency)
+        norm_base, base_scale = self._normalize_currency(base)
+        if norm_currency == norm_base:
+            return scale / base_scale, {
+                "eligible": True, "reasons": [], "source": "same_currency_unit_conversion",
+            }
+        key = ("indication_fx_observed_date_v1", norm_currency, norm_base)
+        cached = self._cache.get(key, 300)
+        if cached is None:
+            async with self._network_sem:
+                cached = self._cache.get(key, 300)
+                if cached is None:
+                    rate, source_date = await self.frankfurter.async_rate(norm_currency, norm_base)
+                    cached = {"rate": rate, "source_date": source_date}
+                    self._cache.set(key, cached)
+        rate = cached.get("rate")
+        if isinstance(rate, bool) or not isinstance(rate, (int, float)) or not math.isfinite(rate) or rate <= 0:
+            raise ProviderError("current_fx_rate_invalid")
+        try:
+            observed_date = date.fromisoformat(cached["source_date"])
+            source_ts = datetime.combine(observed_date, datetime.min.time(), UTC).timestamp()
+        except (KeyError, TypeError, ValueError) as err:
+            raise ProviderError("current_fx_observation_date_missing") from err
+        evidence = assess_quote_freshness(source_ts, analysis_time=time.time(), category="fx")
+        evidence.update(source="frankfurter", source_date=cached["source_date"], timestamp_precision="date")
+        if not evidence["eligible"]:
+            raise ProviderError("current_fx_" + ",".join(evidence["reasons"]))
+        return rate * scale / base_scale, evidence
+
     @staticmethod
     def _canonical_currency(currency: str | None) -> str:
         return canonical_currency(currency, "USD")
@@ -2122,23 +2156,22 @@ class InvestmentManager:
     def _economic_classification_metadata(
         asset: dict[str, Any], classification: dict[str, Any]
     ) -> dict[str, Any]:
-        """Return explanatory classification/structure metadata only.
+        """Describe a provisional taxonomy without inventing a probability.
 
-        These fields do not alter the frozen V13/V12c score, activation, sleeve
-        caps, or portfolio-risk mathematics.
+        These fields do not alter the frozen V13/V12c scoring parameters.
         """
         category = str(asset.get("category") or "other").strip().lower()
         symbol = str(asset.get("symbol") or asset.get("provider_id") or "").strip().upper()
         name = str(asset.get("name") or "").strip().upper()
         sleeve = str(classification.get("economic_sleeve") or "unknown")
         if sleeve == "unknown":
-            confidence, basis = 0.0, "unknown_exposure"
+            confidence, basis = None, "unknown_exposure"
         elif sleeve == "nontradable" or category in {"crypto", "stock", "commodity", "fx", "index"}:
-            confidence, basis = 1.0, "direct_product_type"
+            confidence, basis = None, "unverified_product_type"
         elif symbol in {"QQQ", "VFIAX", "FXAIX"}:
-            confidence, basis = 1.0, "known_wrapper_identity"
+            confidence, basis = None, "unverified_wrapper_identity"
         else:
-            confidence, basis = 0.90, "product_name_taxonomy"
+            confidence, basis = None, "unverified_product_name_taxonomy"
         flags: list[str] = []
         if "SWAP" in name:
             flags.append("swap_based_structure")
@@ -2879,6 +2912,16 @@ class InvestmentManager:
                 "currency": raw.get("currency"),
                 "exchange": raw.get("exchange"),
             }
+            # These are user assertions to cross-check, never certification.
+            # In particular no nested identity/evidence or 'verified' flag is
+            # copied from a websocket/discovery/portfolio candidate.
+            for field in ("isin", "share_class", "share_class_currency", "income_treatment", "leverage_factor", "leveraged", "inverse", "high_yield", "replication", "currency_hedged"):
+                if field in raw:
+                    candidate[field] = raw[field]
+            if "distribution_policy" in raw and "income_treatment" not in candidate:
+                candidate["income_treatment"] = raw["distribution_policy"]
+            if "leverage" in raw and "leverage_factor" not in candidate:
+                candidate["leverage_factor"] = raw["leverage"]
             if category and candidate["category"] != category:
                 continue
             clean.append(candidate)
@@ -2897,7 +2940,7 @@ class InvestmentManager:
             classification = classify_economic_exposure(asset)
             asset.update(classification)
             asset.update(self._economic_classification_metadata(asset, classification))
-            if not classification["allocatable"]:
+            if classification["economic_sleeve"] == "nontradable":
                 excluded_candidates.append(
                     {
                         "provider": asset["provider"],
@@ -2945,19 +2988,110 @@ class InvestmentManager:
             raise ValueError("All indication candidates were excluded by the portfolio overlap policy")
 
         history_period = "5y" if horizon in {"long", "very_long"} else "1y"
-        risk_history_period = "5y"
+        # Risk uses daily observations so a provider's weekly opening label
+        # cannot shift an exchange's closing return into a different ISO week.
+        risk_history_period = "5y_risk"
         risk_fx_history_period = "5y_risk"
+        evidence_sources: dict[tuple[str, str], tuple[Quote, list[HistoryPoint], list[HistoryPoint]]] = {}
         emit_progress(35, "market_history", completed=0, total=len(eligible_assets))
 
+        def refresh_evidence(asset: dict[str, Any], at_time: float) -> list[str]:
+            source_rows = evidence_sources.get(self._candidate_key(asset))
+            if source_rows is None:
+                return list(asset.get("input_evidence_blockers") or [])
+            source_quote, signal_points, source_risk = source_rows
+            checks = dict(asset.get("data_quality") or {})
+            checks["quote"] = {
+                **(checks.get("quote") or {}),
+                **assess_quote_freshness(
+                    source_quote.market_time, analysis_time=at_time, category=asset["category"],
+                ),
+            }
+            for role, observations, cadence in (
+                ("signal", signal_points, "weekly" if history_period == "5y" else "daily"),
+                ("risk", source_risk, "daily"),
+            ):
+                checks[role] = {
+                    **(checks.get(role) or {}),
+                    **assess_history_freshness(
+                        observations, analysis_time=at_time, category=asset["category"],
+                        cadence=cadence, role=role,
+                    ),
+                }
+            for fx_key in ("current_fx", "historical_fx"):
+                old_fx = checks.get(fx_key) or {}
+                if old_fx.get("source") == "frankfurter":
+                    latest = assess_quote_freshness(old_fx.get("source_as_of_ts"), analysis_time=at_time, category="fx")
+                    checks[fx_key] = {**old_fx, **latest}
+            asset["evidence_as_of_date"] = datetime.fromtimestamp(at_time, UTC).date().isoformat()
+            identity = resolve_instrument_identity(
+                asset, provider_metadata=asset.get("instrument_metadata"),
+                as_of=asset["evidence_as_of_date"],
+            )
+            asset.update(identity)
+            asset["instrument_identity"] = identity
+            asset["data_quality"] = checks
+            return list(dict.fromkeys([
+                *identity["instrument_identity_blockers"],
+                *(reason for check in checks.values() for reason in check.get("reasons", [])),
+            ]))
+
         async def evaluate(asset: dict[str, Any], overlap: dict[str, Any]) -> dict[str, Any]:
-            quote = await self._quote(asset)
-            if history_period == risk_history_period:
-                points, model_history_source = await self._validated_indication_history(
-                    asset, history_period, quote.currency
+            asset = dict(asset)
+            asset["input_evidence_contract"] = "source-time-and-exact-identity-v1"
+            asset["data_quality_eligible"] = False
+            asset["instrument_identity_eligible"] = False
+
+            def rejected(
+                reasons: list[str], *, quality: dict[str, Any] | None = None,
+                detail: str | None = None,
+            ) -> dict[str, Any]:
+                blockers = list(dict.fromkeys(reasons))
+                return {
+                    **asset,
+                    "score": None, "market_score": None, "confidence": 0.0,
+                    "activation": 0.0, "allocation_context_scale": 0.0,
+                    "allocation_eligible": False, "label": "caution",
+                    "risk_weekly_returns": {}, "risk_history_eligible": False,
+                    "risk_history_weeks": 0, "data_quality_eligible": False,
+                    "data_quality": quality or {}, "input_evidence_blockers": blockers,
+                    "warnings": blockers, "reasons": [],
+                    "metrics": {"input_evidence_blockers": blockers, "input_evidence_error": detail},
+                    "price": None, "portfolio_price": None,
+                    "quote_currency": asset.get("currency"), "portfolio_currency": base,
+                }
+
+            try:
+                quote = await self._quote(asset)
+            except Exception as err:
+                return rejected(["quote_unavailable"], detail=str(err)[:300])
+            asset["instrument_metadata"] = quote.instrument_metadata
+            asset["evidence_as_of_date"] = datetime.fromtimestamp(time.time(), UTC).date().isoformat()
+            identity = resolve_instrument_identity(
+                asset, provider_metadata=quote.instrument_metadata,
+                as_of=asset["evidence_as_of_date"],
+            )
+            asset.update(identity)
+            asset["instrument_identity"] = identity
+            quote_quality = assess_quote_freshness(
+                quote.market_time, analysis_time=time.time(), category=asset["category"],
+            )
+            quote_reasons = list(quote_quality["reasons"])
+            if (
+                isinstance(quote.price, bool) or not isinstance(quote.price, (int, float))
+                or not math.isfinite(quote.price) or quote.price <= 0
+            ):
+                quote_reasons.append("quote_price_invalid")
+            if not identity["instrument_identity_eligible"] or quote_reasons:
+                return rejected(
+                    [*identity["instrument_identity_blockers"], *quote_reasons],
+                    quality={"quote": quote_quality},
                 )
-                risk_points = points
-                risk_history_source = model_history_source
-            else:
+            # Keep the requested assertions separate from observed metadata;
+            # subsequent model passes resolve the same exact identity again.
+            asset["instrument_identity_eligible"] = True
+            asset["_observed_exchange"] = (quote.instrument_metadata or {}).get("exchange")
+            try:
                 (
                     (points, model_history_source),
                     (risk_points, risk_history_source),
@@ -2969,22 +3103,68 @@ class InvestmentManager:
                         asset, risk_history_period, quote.currency
                     ),
                 )
-            risk_history_error = None
+            except Exception as err:
+                return rejected(["validated_history_unavailable"], detail=str(err)[:300])
+            analysis_time = time.time()
+            quality = {
+                "quote": assess_quote_freshness(
+                    quote.market_time, analysis_time=analysis_time, category=asset["category"],
+                ),
+                "signal": assess_history_freshness(
+                    points, analysis_time=analysis_time, category=asset["category"],
+                    cadence="weekly" if history_period == "5y" else "daily", role="signal",
+                ),
+                "risk": assess_history_freshness(
+                    risk_points, analysis_time=analysis_time, category=asset["category"],
+                    cadence="daily", role="risk",
+                ),
+            }
+            evidence_blockers = [reason for check in quality.values() for reason in check["reasons"]]
+            inception = identity.get("listing_inception") or identity.get("share_class_inception")
+            if inception:
+                inception_ts = datetime.combine(date.fromisoformat(inception), datetime.min.time(), UTC).timestamp()
+                # Exclude every pre-inception observation, including a partial
+                # first week labelled by its Monday. The unchanged 52-week gate
+                # runs on the remaining exact-share-class data only.
+                retained_points = [point for point in points if point.ts >= inception_ts]
+                retained_risk = [point for point in risk_points if point.session_date and point.session_date >= inception]
+                quality["signal"]["pre_inception_observations_excluded"] = len(points) - len(retained_points)
+                quality["risk"]["pre_inception_observations_excluded"] = len(risk_points) - len(retained_risk)
+                points, risk_points = retained_points, retained_risk
+                if len(points) < 2 or len(risk_points) < 2:
+                    evidence_blockers.append("exact_share_class_history_insufficient")
+            if evidence_blockers:
+                return rejected(evidence_blockers, quality=quality)
+            historical_fx_quality: dict[str, Any] = {}
+            quality["historical_fx"] = historical_fx_quality
             try:
                 risk_points_for_contract = await self._convert_history(
                     list(risk_points),
                     quote.currency,
                     base,
                     risk_fx_history_period,
+                    require_fresh=True,
+                    evidence=historical_fx_quality,
                 )
                 risk_weekly_returns = weekly_return_map_from_points(
-                    risk_points_for_contract
+                    risk_points_for_contract, require_session_dates=True,
                 )
             except Exception as err:
-                # Market scoring can still be shown, but a candidate without a
-                # base-currency risk history must receive zero validated weight.
-                risk_weekly_returns = {}
-                risk_history_error = str(err)
+                return rejected(["validated_risk_fx_unavailable"], quality=quality, detail=str(err)[:300])
+            try:
+                fx, fx_quality = await self._validated_indication_fx_rate(quote.currency, base)
+            except Exception as err:
+                return rejected(["current_fx_unavailable"], quality=quality, detail=str(err)[:300])
+            quality["current_fx"] = fx_quality
+            # The cutoff is after every awaited source fetch, including FX.
+            # A slow second feed must not leave a formerly fresh quote eligible.
+            evidence_sources[self._candidate_key(asset)] = (quote, list(points), list(risk_points))
+            asset["data_quality"] = quality
+            final_blockers = refresh_evidence(asset, time.time())
+            if final_blockers:
+                return rejected(final_blockers, quality=asset["data_quality"])
+            quality = asset["data_quality"]
+            asset["data_quality_eligible"] = True
             key = self._candidate_key(asset)
             existing = holding_by_key.get(key) or {}
             holding_value = float(existing.get("value") or 0)
@@ -3016,15 +3196,23 @@ class InvestmentManager:
                 asset,
                 risk_weekly_returns,
             )
-            fx = await self._fx_rate(quote.currency, base)
             deterministic.update(
                 {
+                    **asset["instrument_identity"],
+                    "instrument_identity": asset["instrument_identity"],
+                    "instrument_metadata": quote.instrument_metadata,
+                    "evidence_as_of_date": asset["evidence_as_of_date"],
+                    "input_evidence_contract": asset["input_evidence_contract"],
+                    "data_quality_eligible": True,
+                    "data_quality": quality,
+                    "input_evidence_blockers": [],
                     "provider": asset["provider"], "provider_id": asset["provider_id"],
                     "symbol": asset["symbol"], "name": asset["name"],
                     "category": asset.get("category") or "other", "exchange": asset.get("exchange"),
                     "quote_currency": quote.currency, "portfolio_currency": base,
                     "price": quote.price, "portfolio_price": quote.price * fx,
                     "source": quote.source, "delayed": quote.delayed,
+                    "market_time": quote.market_time,
                     "portfolio_overlap": overlap_score,
                     "portfolio_overlap_known": bool(overlap.get("known")),
                     "portfolio_overlap_matched": bool(overlap.get("matched")),
@@ -3050,21 +3238,14 @@ class InvestmentManager:
             metrics["selected_risk_tolerance"] = risk_tolerance
             metrics["portfolio_economic_sleeve_weight"] = category_weight
             metrics["risk_history_source_period"] = risk_history_period
+            metrics["risk_history_source_cadence"] = "daily"
+            metrics["risk_week_calendar"] = "provider_trading_session_date"
+            metrics["risk_history_observations"] = len(risk_points_for_contract)
             metrics["risk_fx_history_period"] = risk_fx_history_period
             metrics["risk_history_currency"] = base
             metrics["validated_model_history_source"] = model_history_source
             metrics["validated_risk_history_source"] = risk_history_source
             metrics["validated_history_contract"] = "corporate_action_aware"
-            if risk_history_error:
-                metrics["risk_history_error"] = risk_history_error[:300]
-                deterministic["warnings"] = list(
-                    dict.fromkeys(
-                        [
-                            *(deterministic.get("warnings") or []),
-                            "validated_risk_history_unavailable",
-                        ]
-                    )
-                )
             deterministic["metrics"] = metrics
             return deterministic
 
@@ -3095,6 +3276,15 @@ class InvestmentManager:
                 results.append(value)
         if not results:
             raise ValueError("Market history is unavailable for all indication candidates")
+        evidence_as_of = time.time()
+        for item in results:
+            if not item.get("data_quality_eligible"):
+                continue
+            blockers = refresh_evidence(item, evidence_as_of)
+            if blockers:
+                item.update(data_quality_eligible=False, allocation_eligible=False,
+                            activation=0.0, label="caution", input_evidence_blockers=blockers)
+                item["warnings"] = list(dict.fromkeys([*(item.get("warnings") or []), *blockers]))
         emit_progress(76, "scoring", evaluated=len(results), errors=len(errors))
         attach_relative_strength(results)
         results.sort(
@@ -3163,7 +3353,7 @@ class InvestmentManager:
             metrics["portfolio_weekly_es95_target"] = (
                 PORTFOLIO_WEEKLY_ES95_TARGET[risk_tolerance]
             )
-            suitability_blockers: list[str] = []
+            suitability_blockers: list[str] = list(item.get("input_evidence_blockers") or [])
             if sleeve_cap <= 0.0:
                 suitability_blockers.append(
                     "economic_sleeve_not_allowed_for_selected_risk"
@@ -3249,6 +3439,8 @@ class InvestmentManager:
                 "candidate_cap_is_explicit": max_candidate_pct is not None,
                 "minimum_cash_reserve_fraction": min_cash_reserve_pct / 100.0,
                 "minimum_confidence": min_confidence_pct / 100.0,
+                "input_evidence_contract": "source-time-and-exact-identity-v1",
+                "instrument_identity_policy": IDENTITY_POLICY_VERSION,
                 "diversification": diversification,
                 "whole_units_only": bool(whole_units_only),
                 "whole_unit_categories": list(whole_unit_categories),
@@ -3355,6 +3547,8 @@ class InvestmentManager:
                 "risk_tolerance": risk_tolerance,
                 "horizon": horizon,
                 "history_period": history_period,
+                "risk_history_period": risk_history_period,
+                "risk_history_cadence": "daily",
                 "validated_history_contract": "corporate_action_aware",
                 "strategy": strategy,
                 "overlap_policy": overlap_policy,
@@ -3379,24 +3573,48 @@ class InvestmentManager:
             "ai_allocation": ai_allocation,
             "ai_review": ai_review,
             "generated_at": int(time.time()),
+            "evidence_as_of": int(evidence_as_of),
         }
 
     async def _history(self, holding: dict[str, Any], period: str) -> list[HistoryPoint]:
+        strict_identity = bool(holding.get("input_evidence_contract"))
         key = ("history", holding["provider"], holding["provider_id"], period)
+        if strict_identity:
+            key = ("history_source_identity_v1", holding["provider"], holding["provider_id"], period,
+                   holding.get("currency"), holding.get("_observed_exchange"), holding.get("category"))
         cached = self._cache.get(key, DEFAULT_HISTORY_CACHE_SECONDS)
         if cached is not None:
             return [HistoryPoint(**x) for x in cached]
         provider_name = str(holding.get("provider") or "")
         provider = self.providers.get(provider_name)
         if provider is None:
+            if strict_identity:
+                raise ProviderError("Indication history provider unavailable")
             if provider_name not in {"twelve_data", "alpha_vantage"}:
                 raise ProviderError(f"Unsupported provider {provider_name}")
             points = await self._fallback_paid_history(holding, period, ProviderError(f"{provider_name} is not configured"))
         else:
             try:
                 async with self._network_sem:
-                    points = list(await provider.async_history(holding["provider_id"], period))
+                    if strict_identity and provider_name == "yahoo":
+                        points = list(await provider.async_history(
+                            holding["provider_id"], period, require_exact_symbol=True,
+                            expected_currency=(holding.get("instrument_metadata") or {}).get("currency"),
+                            expected_exchange=holding.get("_observed_exchange"),
+                            expected_category=holding.get("category"),
+                        ))
+                    elif strict_identity and provider_name == "twelve_data":
+                        points = list(await provider.async_history(
+                            holding["provider_id"], period,
+                            expected_metadata=holding.get("instrument_metadata"),
+                        ))
+                    else:
+                        points = list(await provider.async_history(holding["provider_id"], period))
             except Exception as first_err:
+                if strict_identity:
+                    # A generic availability fallback is not evidence of the
+                    # same instrument/venue. The indicated candidate abstains.
+                    raise
                 if provider_name == "yahoo":
                     async with self._network_sem:
                         points = list(await self.stooq.async_history(holding["provider_id"], period))
@@ -3427,11 +3645,13 @@ class InvestmentManager:
         provider_id = str(holding.get("provider_id") or "")
         category = str(holding.get("category") or "other").lower()
         cache_key = (
-            "validated_indication_history",
+            "validated_indication_history_source_identity_v3",
             provider_name,
             provider_id,
             period,
-            str(expected_currency or "").upper(),
+            str(expected_currency or "").strip(),
+            str(holding.get("_observed_exchange") or ""),
+            category,
         )
         cached = self._cache.get(cache_key, DEFAULT_HISTORY_CACHE_SECONDS)
         if cached is not None:
@@ -3443,6 +3663,8 @@ class InvestmentManager:
         if category == "crypto":
             points = await self._history(holding, period)
             source = f"{provider_name}:corporate_action_neutral_crypto"
+            if period == "5y_risk":
+                source += ":daily_sessions"
             self._cache.set(
                 cache_key,
                 {"source": source, "points": [point.as_dict() for point in points]},
@@ -3466,6 +3688,9 @@ class InvestmentManager:
                                 provider_id,
                                 period,
                                 expected_currency=expected_currency,
+                                require_exact_symbol=True,
+                                expected_exchange=holding.get("_observed_exchange"),
+                                expected_category=category,
                             )
                         )
                     else:
@@ -3473,6 +3698,8 @@ class InvestmentManager:
                             await provider.async_adjusted_history(provider_id, period)
                         )
                 source = f"{provider_name}:split_dividend_adjusted"
+                if period == "5y_risk":
+                    source += ":daily_sessions"
                 self._cache.set(
                     cache_key,
                     {"source": source, "points": [point.as_dict() for point in points]},
@@ -3487,6 +3714,9 @@ class InvestmentManager:
             symbol = str(holding.get("symbol") or "").strip()
             if symbol:
                 try:
+                    expected_exchange = holding.get("_observed_exchange")
+                    if not expected_exchange:
+                        raise ProviderError("Adjusted-history fallback exchange identity unavailable")
                     async with self._network_sem:
                         points = list(
                             await self.yahoo.async_adjusted_history(
@@ -3494,9 +3724,13 @@ class InvestmentManager:
                                 period,
                                 expected_currency=expected_currency,
                                 require_exact_symbol=True,
+                                expected_exchange=expected_exchange,
+                                expected_category=category,
                             )
                         )
                     source = "yahoo:split_dividend_adjusted_exact_symbol_fallback"
+                    if period == "5y_risk":
+                        source += ":daily_sessions"
                     self._cache.set(
                         cache_key,
                         {"source": source, "points": [point.as_dict() for point in points]},
@@ -3531,18 +3765,25 @@ class InvestmentManager:
                 raise ProviderError(str(first_err)) from first_err
 
     async def _convert_history(
-        self, points: list[HistoryPoint], currency: str, base: str, period: str
+        self, points: list[HistoryPoint], currency: str, base: str, period: str,
+        *, require_fresh: bool = False, evidence: dict[str, Any] | None = None,
     ) -> list[HistoryPoint]:
         norm_currency, scale = self._normalize_currency(currency)
         norm_base, _ = self._normalize_currency(base)
         if norm_currency == norm_base:
-            return [HistoryPoint(p.ts, p.value * scale) for p in points]
+            if evidence is not None:
+                evidence.update(eligible=True, reasons=[], source="same_currency_unit_conversion")
+            return [HistoryPoint(p.ts, p.value * scale, session_date=getattr(p, "session_date", None)) for p in points]
         fx_key = ("fx_history", norm_currency, norm_base, period)
+        if require_fresh:
+            # Grouped rates can label aggregate weeks by their start. A
+            # separate raw daily cache prevents their use as observed dates.
+            fx_key = ("fx_history_observed_daily_v1", norm_currency, norm_base, period)
         cached_fx = self._cache.get(fx_key, DEFAULT_HISTORY_CACHE_SECONDS)
         if cached_fx is not None:
             fx_points = [HistoryPoint(**row) for row in cached_fx]
         else:
-            lock_key = (norm_currency, norm_base, period)
+            lock_key = (norm_currency, norm_base, period, require_fresh)
             lock = self._fx_history_locks.setdefault(lock_key, asyncio.Lock())
             async with lock:
                 cached_fx = self._cache.get(
@@ -3555,7 +3796,8 @@ class InvestmentManager:
                         async with self._network_sem:
                             fx_points = list(
                                 await self.frankfurter.async_history(
-                                    f"{norm_currency}/{norm_base}", period
+                                    f"{norm_currency}/{norm_base}", period,
+                                    **({"raw_daily": True} if require_fresh else {}),
                                 )
                             )
                     except Exception as err:
@@ -3569,6 +3811,17 @@ class InvestmentManager:
                     self._cache.set(
                         fx_key, [point.as_dict() for point in fx_points]
                     )
+        if require_fresh:
+            converted, fx_evidence = convert_history_with_observed_fx(
+                points, fx_points, analysis_time=time.time(), cadence="daily", scale=scale,
+            )
+            fx_evidence.update(source="frankfurter", timestamp_precision="date")
+            if evidence is not None:
+                evidence.update(fx_evidence)
+            if not fx_evidence["eligible"]:
+                raise ProviderError(",".join(fx_evidence["reasons"]))
+            session_dates = {point.ts: getattr(point, "session_date", None) for point in points}
+            return [HistoryPoint(ts, value, session_date=session_dates.get(ts)) for ts, value in converted]
         fx_points.sort(key=lambda x: x.ts)
         out: list[HistoryPoint] = []
         idx = 0

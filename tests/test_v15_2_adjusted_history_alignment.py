@@ -52,7 +52,8 @@ def test_twelve_data_and_stooq_are_not_promoted():
 
 def test_indication_signal_and_risk_use_validated_history():
     body = indication_body()
-    assert body.count("self._validated_indication_history(") >= 3
+    # Signal and raw daily risk now always use distinct validated requests.
+    assert body.count("self._validated_indication_history(") >= 2
     assert "self._history(asset, history_period)" not in body
     assert "self._history(asset, risk_history_period)" not in body
     assert 'metrics["validated_model_history_source"]' in body
