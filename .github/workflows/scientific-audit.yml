@@ -1,0 +1,44 @@
+name: Scientific safety audit
+on:
+  push:
+    branches: [audit/scientific-safety-20261006]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  independent-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install isolated audit dependencies
+        run: python -m pip install pytest numpy scipy scikit-learn
+      - name: Verify production and existing tests unchanged
+        run: git diff --exit-code 5d0a72c65a5d122ac9e090a5f9bdd615ff157c49 -- custom_components tests
+      - name: Run existing regression suite
+        run: |
+          mkdir -p audit-results
+          python -m pytest -q tests | tee audit-results/existing-tests.txt
+          python -m pip freeze > audit-results/environment.txt
+          for file in custom_components/investment/www/*.js; do node --check "$file"; done
+      - name: Run independent adversarial and statistical experiments
+        run: python audit/scientific_safety.py | tee audit-results/independent-audit.txt
+      - name: Run retrospective market experiment when present
+        run: |
+          if [ -f audit/retrospective_market.py ]; then
+            python audit/retrospective_market.py | tee audit-results/market-audit.txt
+          fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: scientific-safety-audit
+          path: audit-results/
+          retention-days: 30
