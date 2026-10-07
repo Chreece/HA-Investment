@@ -42,7 +42,7 @@ def test_every_visible_reason_warning_and_blocker_has_plain_help_in_en_de_el():
         assert signal_block.count(f"{code}:") == 3, code
         assert help_block.count(f"{code}:") == 3, code
     assert 'reasons.innerHTML=signalItemsHtml(this,item.reasons||[],{warning:false})' in runtime
-    assert 'warnings.innerHTML=signalItemsHtml(this,item.warnings||[],{warning:true})' in runtime
+    assert 'warnings.innerHTML=signalItemsHtml(this,(item.warnings||[]).filter(code=>!this.indicationEvidenceReasonKey(code)),{warning:true})' in runtime
     assert 'signalHelpBubble(panel,code)' in runtime
 
 def test_technical_glossary_covers_every_help_topic_exactly_once():
@@ -78,7 +78,7 @@ def test_plain_language_definitions_explicitly_block_common_financial_misreading
         "It does not mean the data provider is 100% correct",
         "This is not the same thing as RSI",
         "not a statement that the investment will lose 20%",
-        "This is classification confidence, not confidence that the investment will perform well",
+        "Missing or conflicting identity information prevents an allocation",
         "future returns are never guaranteed",
     ):
         assert phrase in runtime

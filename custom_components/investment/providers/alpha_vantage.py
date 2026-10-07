@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import time
+import math
 from collections.abc import Sequence
 from datetime import datetime, timezone
 from typing import Any
@@ -139,12 +140,22 @@ class AlphaVantageProvider(MarketProvider):
         if not currency:
             raise ProviderError(f"Alpha Vantage quote currency missing for {symbol}")
         previous = row.get("08. previous close")
+        if isinstance(price, bool) or not math.isfinite(float(price)) or float(price) <= 0:
+            raise ProviderError(f"Invalid Alpha Vantage quote for {symbol}")
         return Quote(
             price=float(price),
             currency=currency,
             previous_close=float(previous) if previous not in (None, "") else None,
-            market_time=int(time.time()),
+            market_time=_ts(row["07. latest trading day"]) if row.get("07. latest trading day") else None,
             source=self.title,
+            instrument_metadata={
+                "provider": self.provider_id,
+                "provider_id": _encode_provider_id(str(row.get("01. symbol") or ""), currency),
+                "symbol": row.get("01. symbol"),
+                # GLOBAL_QUOTE supplies no exchange/type/ISIN evidence. Do not
+                # promote the requested candidate fields to observed metadata.
+                "currency": None,
+            },
             delayed=(
                 True
                 if self.entitlement == "delayed"

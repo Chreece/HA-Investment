@@ -6,12 +6,16 @@ so another free source can replace them without changing the portfolio/UI layers
 from __future__ import annotations
 
 import asyncio
+import math
 import time
 from collections.abc import Sequence
+from datetime import datetime
 from urllib.parse import quote
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from .base import MarketProvider, ProviderError, quote_currency_matches
 from ..models import HistoryPoint, Quote, SearchResult
+from ..instrument_identity import provider_exchanges_match
 from ..search import crypto_name, crypto_symbol_from_query, target_crypto_symbol, yahoo_crypto_meta_matches
 
 _USER_AGENT = "Mozilla/5.0 (Home Assistant; HA-Investment/0.4.0)"
@@ -78,6 +82,9 @@ _PERIOD = {
     "3m": ("3mo", "1d", 93 * 24 * 3600),
     "1y": ("1y", "1d", 370 * 24 * 3600),
     "5y": ("5y", "1wk", 5 * 370 * 24 * 3600),
+    # Risk returns are aggregated from daily session closes after observed FX
+    # conversion. Keep the existing weekly five-year signal feed separate.
+    "5y_risk": ("5y", "1d", 5 * 370 * 24 * 3600),
 }
 
 
@@ -448,22 +455,43 @@ class YahooProvider(MarketProvider):
         result = await self._chart(provider_id, "5d", "1d")
         meta = result.get("meta", {})
         closes = (((result.get("indicators") or {}).get("quote") or [{}])[0].get("close") or [])
-        usable = [float(v) for v in closes if v is not None]
+        timestamps = result.get("timestamp") or []
+        usable = [(index, value) for index, value in enumerate(closes) if value is not None]
         price = meta.get("regularMarketPrice")
+        market_time = meta.get("regularMarketTime")
         if price is None and usable:
-            price = usable[-1]
+            index, price = usable[-1]
+            # A fallback close must retain its own observation time, including
+            # when later candles have null closes. Fetch time proves nothing.
+            market_time = timestamps[index] if index < len(timestamps) else None
         if price is None:
             raise ProviderError(f"No latest price for {provider_id}")
+        if isinstance(price, bool) or not math.isfinite(float(price)) or float(price) <= 0:
+            raise ProviderError(f"Invalid Yahoo quote price for {provider_id}")
+        currency = str(meta.get("currency") or "").strip()
+        if not currency:
+            raise ProviderError(f"Yahoo quote currency missing for {provider_id}")
         prev = meta.get("chartPreviousClose") or meta.get("previousClose")
         if prev is None and len(usable) > 1:
-            prev = usable[-2]
+            prev = usable[-2][1]
         return Quote(
             price=float(price),
-            currency=str(meta.get("currency") or "USD"),
+            currency=currency,
             previous_close=float(prev) if prev is not None else None,
-            market_time=int(meta.get("regularMarketTime") or time.time()),
+            market_time=market_time,
             source=self.title,
             delayed=None,
+            instrument_metadata={
+                "provider": self.provider_id,
+                "provider_id": meta.get("symbol"),
+                "symbol": meta.get("symbol"),
+                "category": _QUOTE_TYPE_CATEGORY.get(str(meta.get("instrumentType") or "").upper()),
+                "currency": meta.get("currency"),
+                "exchange": meta.get("exchangeName") or meta.get("fullExchangeName"),
+                "full_exchange_name": meta.get("fullExchangeName"),
+                "name": meta.get("longName") or meta.get("shortName"),
+                "isin": meta.get("isin"),
+            },
         )
 
     async def _history_points(
@@ -474,6 +502,8 @@ class YahooProvider(MarketProvider):
         adjusted: bool,
         expected_currency: str | None = None,
         require_exact_symbol: bool = False,
+        expected_exchange: str | None = None,
+        expected_category: str | None = None,
     ) -> list[HistoryPoint]:
         range_, interval, horizon = _PERIOD.get(period, _PERIOD["1m"])
         result = await self._chart(
@@ -483,9 +513,24 @@ class YahooProvider(MarketProvider):
             include_adjusted_close=adjusted,
         )
         meta = result.get("meta") or {}
-        if expected_currency is not None and not quote_currency_matches(
-            meta.get("currency"), expected_currency
-        ):
+        daily_risk = period == "5y_risk"
+        session_timezone = None
+        if daily_risk:
+            if meta.get("dataGranularity") != "1d":
+                raise ProviderError(f"Yahoo daily risk history interval missing or mismatched for {provider_id}")
+            timezone_name = meta.get("exchangeTimezoneName")
+            if not isinstance(timezone_name, str) or not timezone_name:
+                raise ProviderError(f"Yahoo daily risk history session timezone missing for {provider_id}")
+            try:
+                session_timezone = ZoneInfo(timezone_name)
+            except (ValueError, ZoneInfoNotFoundError) as err:
+                raise ProviderError(f"Yahoo daily risk history session timezone invalid for {provider_id}") from err
+
+        def native_currency(value):
+            raw = str(value or "").strip()
+            return "GBX" if raw == "GBp" or raw.upper() == "GBX" else raw.upper()
+
+        if expected_currency is not None and native_currency(meta.get("currency")) != native_currency(expected_currency):
             raise ProviderError(
                 f"Yahoo adjusted-history currency mismatch for {provider_id}"
             )
@@ -495,6 +540,10 @@ class YahooProvider(MarketProvider):
                 raise ProviderError(
                     f"Yahoo adjusted-history symbol mismatch for {provider_id}"
                 )
+        if expected_exchange and not provider_exchanges_match(meta.get("exchangeName") or meta.get("fullExchangeName"), expected_exchange):
+            raise ProviderError(f"Yahoo adjusted-history exchange mismatch for {provider_id}")
+        if expected_category and _QUOTE_TYPE_CATEGORY.get(str(meta.get("instrumentType") or "").upper()) != expected_category:
+            raise ProviderError(f"Yahoo adjusted-history category mismatch for {provider_id}")
 
         timestamps = result.get("timestamp") or []
         indicators = result.get("indicators") or {}
@@ -510,20 +559,45 @@ class YahooProvider(MarketProvider):
             )
 
         cutoff = int(time.time()) - horizon
-        points = [
-            HistoryPoint(int(ts), float(value))
-            for ts, value in zip(timestamps, values, strict=False)
-            if value is not None and int(ts) >= cutoff
-        ]
+        strict_observations = adjusted or require_exact_symbol or daily_risk
+        if strict_observations and len(timestamps) != len(values):
+            raise ProviderError(f"Yahoo adjusted-history timestamp/value mismatch for {provider_id}")
+        points = []
+        for ts, value in zip(timestamps, values, strict=False):
+            if strict_observations and (
+                isinstance(ts, bool) or not isinstance(ts, (int, float))
+                or not math.isfinite(ts) or ts <= 0
+                or (value is not None and (
+                    isinstance(value, bool) or not isinstance(value, (int, float))
+                    or not math.isfinite(value) or value <= 0
+                ))
+            ):
+                raise ProviderError(f"Invalid Yahoo adjusted-history observation for {provider_id}")
+            if value is not None and int(ts) >= cutoff:
+                session_date = None
+                if daily_risk:
+                    # A timestamp can be Sunday UTC and Monday at the venue.
+                    # Preserve the observed instant and its actual session date.
+                    try:
+                        session_date = datetime.fromtimestamp(ts, session_timezone).date().isoformat()
+                    except (OverflowError, OSError, ValueError) as err:
+                        raise ProviderError(f"Invalid Yahoo daily risk history timestamp for {provider_id}") from err
+                points.append(HistoryPoint(
+                    ts if strict_observations else int(ts), float(value), session_date=session_date,
+                ))
         if not points:
             kind = "adjusted history" if adjusted else "history"
             raise ProviderError(f"No {kind} for {provider_id}")
         return points
 
     async def async_history(
-        self, provider_id: str, period: str
+        self, provider_id: str, period: str, *, require_exact_symbol: bool = False,
+        expected_currency: str | None = None, expected_exchange: str | None = None,
+        expected_category: str | None = None,
     ) -> Sequence[HistoryPoint]:
-        return await self._history_points(provider_id, period, adjusted=False)
+        return await self._history_points(provider_id, period, adjusted=False,
+            require_exact_symbol=require_exact_symbol, expected_currency=expected_currency,
+            expected_exchange=expected_exchange, expected_category=expected_category)
 
     async def async_adjusted_history(
         self,
@@ -532,6 +606,8 @@ class YahooProvider(MarketProvider):
         *,
         expected_currency: str | None = None,
         require_exact_symbol: bool = False,
+        expected_exchange: str | None = None,
+        expected_category: str | None = None,
     ) -> Sequence[HistoryPoint]:
         return await self._history_points(
             provider_id,
@@ -539,4 +615,6 @@ class YahooProvider(MarketProvider):
             adjusted=True,
             expected_currency=expected_currency,
             require_exact_symbol=require_exact_symbol,
+            expected_exchange=expected_exchange,
+            expected_category=expected_category,
         )

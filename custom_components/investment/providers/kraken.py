@@ -2,17 +2,19 @@
 from __future__ import annotations
 
 import time
+import math
 from collections.abc import Sequence
+from datetime import datetime, timezone
 
 from .base import MarketProvider, ProviderError
 from ..search import CRYPTO_NAMES, crypto_query_score
 from ..models import HistoryPoint, Quote, SearchResult
 
-# Long-horizon indication histories are weekly across providers. Kraken's OHLC
-# API is bounded by row count, so weekly sampling both reaches the requested
-# five-year horizon and keeps the scorer comparable with Yahoo/Twelve Data/
-# Alpha Vantage 5y histories.
-_INTERVAL = {"1d": 5, "7d": 30, "1m": 60, "3m": 240, "1y": 1440, "5y": 10080}
+# Long-horizon signals retain weekly sampling. Risk uses separate daily candles
+# and their UTC sessions before weekly aggregation. Kraken returns at most 720
+# OHLC rows regardless of `since`; 5y_risk requests a horizon, not a guarantee
+# of five years of coverage, and must never substitute weekly data to fill it.
+_INTERVAL = {"1d": 5, "7d": 30, "1m": 60, "3m": 240, "1y": 1440, "5y": 10080, "5y_risk": 1440}
 
 _HORIZON = {
     "1d": 86400,
@@ -21,6 +23,7 @@ _HORIZON = {
     "3m": 93 * 86400,
     "1y": 370 * 86400,
     "5y": 5 * 370 * 86400,
+    "5y_risk": 5 * 370 * 86400,
 }
 
 
@@ -161,18 +164,44 @@ class KrakenProvider(MarketProvider):
     async def async_quote(self, provider_id: str) -> Quote:
         info = await self._pair_info(provider_id)
         result = await self._get("Ticker", pair=provider_id)
-        ticker = next(iter(result.values()), None)
+        ticker = result.get(provider_id)
         if not ticker:
             raise ProviderError(f"No Kraken quote for {provider_id}")
-        wsname = info.get("wsname") or "BTC/USD"
-        quote_currency = _clean_asset(wsname.split("/", 1)[-1])
+        wsname = str(info.get("wsname") or "")
+        if "/" not in wsname:
+            raise ProviderError(f"Kraken pair identity missing for {provider_id}")
+        raw_base, raw_quote = wsname.split("/", 1)
+        base_currency, quote_currency = _clean_asset(raw_base), _clean_asset(raw_quote)
+        price = float(ticker["c"][0])
+        market_time = None
+        try:
+            # Ticker has no last-trade timestamp. Bind both price and time to
+            # the same actual trade, not to the time this request completed.
+            trades = await self._get("Trades", pair=provider_id, count=1)
+            rows = trades.get(provider_id) or []
+            if rows and len(rows[-1]) >= 3:
+                raw_price, raw_time = rows[-1][0], rows[-1][2]
+                if not isinstance(raw_price, bool) and not isinstance(raw_time, bool):
+                    price, market_time = float(raw_price), raw_time
+        except ProviderError:
+            # General portfolio quotes remain readable. An indication cannot
+            # allocate from this undated ticker value.
+            pass
         return Quote(
-            price=float(ticker["c"][0]),
+            price=price,
             currency=quote_currency,
             previous_close=float(ticker.get("o")) if ticker.get("o") else None,
-            market_time=int(time.time()),
+            market_time=market_time,
             source=self.title,
             delayed=False,
+            instrument_metadata={
+                "provider": self.provider_id,
+                "provider_id": provider_id,
+                "symbol": f"{base_currency}/{quote_currency}",
+                "category": "crypto" if info.get("aclass_base", "currency") == "currency" else None,
+                "currency": quote_currency,
+                "exchange": "Kraken",
+            },
         )
 
     async def async_history(self, provider_id: str, period: str) -> Sequence[HistoryPoint]:
@@ -180,8 +209,23 @@ class KrakenProvider(MarketProvider):
         horizon = _HORIZON.get(period, _HORIZON["1m"])
         since = int(time.time()) - horizon
         result = await self._get("OHLC", pair=provider_id, interval=interval, since=since)
-        rows = next((value for key, value in result.items() if key != "last"), [])
-        points = [HistoryPoint(int(row[0]), float(row[4])) for row in rows if len(row) > 4]
+        rows = result.get(provider_id) or []
+        points = []
+        for row in rows:
+            if len(row) <= 4 or isinstance(row[0], bool) or isinstance(row[4], bool):
+                raise ProviderError(f"Invalid Kraken history observation for {provider_id}")
+            ts, value = row[0], float(row[4])
+            if not isinstance(ts, (int, float)) or not math.isfinite(ts) or ts <= 0 or not math.isfinite(value) or value <= 0:
+                raise ProviderError(f"Invalid Kraken history observation for {provider_id}")
+            session_date = None
+            if period == "5y_risk":
+                if ts % 86400 != 0:
+                    raise ProviderError(f"Kraken daily risk history session boundary invalid for {provider_id}")
+                try:
+                    session_date = datetime.fromtimestamp(ts, timezone.utc).date().isoformat()
+                except (OverflowError, OSError, ValueError) as err:
+                    raise ProviderError(f"Invalid Kraken daily risk history timestamp for {provider_id}") from err
+            points.append(HistoryPoint(ts, value, session_date=session_date))
         if not points:
             raise ProviderError(f"No Kraken history for {provider_id}")
         return points

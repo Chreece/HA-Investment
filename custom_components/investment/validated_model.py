@@ -143,12 +143,56 @@ def _words(value: Any) -> str:
     return _WORD_RE.sub(" ", str(value or "").upper()).strip()
 
 
+def _observed_identity(asset: dict[str, Any]) -> dict[str, Any]:
+    """Re-resolve supplied provider evidence; output/verified flags are not proof.
+
+    The manager sanitizes requests and supplies the actual adapter response.
+    Lazy loading also supports the standalone, pure-file scientific harness.
+    """
+    if __package__:
+        from .instrument_identity import resolve_instrument_identity
+    else:
+        import importlib.util
+        from pathlib import Path
+        import sys
+
+        name = f"{__name__}_instrument_identity"
+        module = sys.modules.get(name)
+        if module is None:
+            spec = importlib.util.spec_from_file_location(name, Path(__file__).with_name("instrument_identity.py"))
+            module = importlib.util.module_from_spec(spec)
+            sys.modules[name] = module
+            spec.loader.exec_module(module)
+        resolve_instrument_identity = module.resolve_instrument_identity
+    return resolve_instrument_identity(
+        asset,
+        provider_metadata=asset.get("instrument_metadata"),
+        as_of=asset.get("evidence_as_of_date"),
+    )
+
+
+def _candidate_evidence_eligible(asset: dict[str, Any]) -> bool:
+    """Live evidence can only narrow the offline model's approved set."""
+    fields = ("data_quality_eligible", "instrument_identity_eligible")
+    if asset.get("input_evidence_contract") or "instrument_metadata" in asset or any(field in asset for field in fields):
+        if not all(asset.get(field) is True for field in fields):
+            return False
+        if not isinstance(asset.get("instrument_metadata"), dict):
+            return False
+        return bool(_observed_identity(asset)["instrument_identity_eligible"])
+    return True
+
+
 def classify_economic_exposure(asset: dict[str, Any]) -> dict[str, Any]:
     """Return a conservative economic sleeve independent from wrapper category.
 
     Unknown ETF/fund exposures are deliberately not allocatable by the validated
     core.  A wrong sleeve can defeat the risk envelope; leaving cash cannot.
     """
+    if "instrument_metadata" in asset or asset.get("input_evidence_contract"):
+        # Do not replace an exact issuer sleeve with a name-derived guess on a
+        # later pass through scoring or final construction.
+        return _observed_identity(asset)
     category = str(asset.get("category") or "other").strip().lower()
     symbol = _symbol(asset)
     name = _words(asset.get("name"))
@@ -168,6 +212,13 @@ def classify_economic_exposure(asset: dict[str, Any]) -> dict[str, Any]:
 
     if category not in {"etf", "fund"}:
         return {"economic_subtype": "unknown", "economic_sleeve": "unknown", "allocatable": False}
+
+    if re.search(r"\b(?:LEVERAGED|INVERSE|[2-9]X|X[2-9]|DAILY SHORT|ULTRAPRO|ULTRASHORT)\b", name) and not re.search(r"\bULTRASHORT (?:BOND|DURATION|MATURITY)\b", name):
+        return {"economic_subtype": "unsupported_structure", "economic_sleeve": "unknown", "allocatable": False}
+    if "HIGH YIELD" in name or "JUNK" in name:
+        # Credit exposure cannot become cash-like because 'short' also occurs
+        # in the name. Live funds require issuer evidence independently.
+        return {"economic_subtype": "aggregate_bond", "economic_sleeve": "aggregate_bond", "allocatable": True}
 
     # Canonical no-key discovery fallbacks whose display names do not carry
     # enough taxonomy words to classify safely by name alone.  These are
@@ -359,40 +410,75 @@ def weekly_return_map_from_points(
     points: Iterable[Any],
     *,
     lookback_days: int = 3 * 370,
+    require_session_dates: bool = False,
 ) -> dict[str, float]:
     """Convert timestamp/value points to the V10 rolling weekly risk map.
 
     ``points`` may be ``HistoryPoint`` objects, ``(ts, value)`` tuples, or
-    dictionaries with ``ts``/``value``.  The last observation of each ISO week
-    is used and only the trailing V10 three-year risk window is retained.
+    dictionaries with ``ts``/``value``. Optional ``session_date`` is an exact
+    YYYY-MM-DD trading date established by the source adapter (or a third tuple
+    element). It selects the ISO week; the raw source timestamp still orders
+    observations and defines the trailing V10 three-year window.
+
+    Live risk histories require session dates on every raw daily observation.
+    Any absent/invalid date fails closed, including a bad row that would have
+    fallen outside the lookback. Do not substitute a bar's UTC date: a local
+    Monday label can be Sunday in UTC. Legacy offline inputs without session
+    dates retain their original UTC grouping when strict mode is not requested.
     """
-    normalized: list[tuple[int, float]] = []
+    normalized: list[tuple[int, float, dt.date]] = []
     for raw in points:
         if isinstance(raw, dict):
             ts, value = raw.get("ts"), raw.get("value")
+            session_date = raw.get("session_date")
         elif isinstance(raw, (tuple, list)) and len(raw) >= 2:
             ts, value = raw[0], raw[1]
+            session_date = raw[2] if len(raw) >= 3 else None
         else:
             ts, value = getattr(raw, "ts", None), getattr(raw, "value", None)
+            session_date = getattr(raw, "session_date", None)
+        day = None
+        if session_date is not None:
+            if not isinstance(session_date, str):
+                return {}
+            try:
+                day = dt.date.fromisoformat(session_date)
+            except ValueError:
+                return {}
+            if day.isoformat() != session_date:
+                return {}
+        elif require_session_dates:
+            return {}
+        if require_session_dates and (isinstance(ts, bool) or isinstance(value, bool)):
+            return {}
         try:
             stamp = int(ts)
             price = float(value)
-        except (TypeError, ValueError):
+            utc_day = dt.datetime.fromtimestamp(stamp, dt.timezone.utc).date()
+        except (TypeError, ValueError, OverflowError, OSError):
+            if require_session_dates:
+                return {}
             continue
         if stamp <= 0 or not math.isfinite(price) or price <= 0:
+            if require_session_dates:
+                return {}
             continue
-        normalized.append((stamp, price))
+        if day is not None and abs((day - utc_day).days) > 1:
+            # Every real timezone's session date is at most one date away from
+            # UTC. This rejects arbitrary date relabelling without inventing
+            # an exchange calendar or a fixed close time.
+            return {}
+        normalized.append((stamp, price, day or utc_day))
     if len(normalized) < 2:
         return {}
     normalized.sort(key=lambda row: row[0])
     latest = normalized[-1][0]
     cutoff = latest - max(1, int(lookback_days)) * 86400
     weekly_last: dict[tuple[int, int], tuple[int, float]] = {}
-    for stamp, price in normalized:
+    for stamp, price, day in normalized:
         if stamp < cutoff:
             continue
-        date = dt.datetime.fromtimestamp(stamp, dt.timezone.utc).date()
-        iso = date.isocalendar()
+        iso = day.isocalendar()
         weekly_last[(iso.year, iso.week)] = (stamp, price)
     ordered = sorted(weekly_last.items(), key=lambda row: row[1][0])
     out: dict[str, float] = {}
@@ -439,6 +525,20 @@ def prepare_scored_candidate(
 ) -> dict[str, Any]:
     """Attach the frozen market score and production risk inputs to a result."""
     item = dict(scaffold_result)
+    for field in (
+        "input_evidence_contract", "data_quality_eligible", "instrument_identity_eligible",
+        "instrument_metadata", "evidence_as_of_date", "instrument_identity",
+        "provider", "provider_id", "symbol", "category", "currency", "exchange", "name",
+        "isin", "share_class", "share_class_currency",
+        "income_treatment", "leverage_factor", "leveraged", "inverse", "high_yield",
+        "replication", "currency_hedged",
+    ):
+        if field in asset:
+            item[field] = asset[field]
+        else:
+            # Only the candidate's observed inputs may supply identity and
+            # evidence. A scoring scaffold cannot fill in a missing gate.
+            item.pop(field, None)
     classification = classify_economic_exposure({**asset, **item})
     item["economic_subtype"] = classification["economic_subtype"]
     item["economic_sleeve"] = classification["economic_sleeve"]
@@ -448,7 +548,7 @@ def prepare_scored_candidate(
     act = activation(market_score, confidence)
     risk_map = dict(risk_weekly_returns or {})
     risk_eligible = _validated_risk_map(risk_map) is not None
-    if not classification["allocatable"] or not risk_eligible:
+    if not classification["allocatable"] or not risk_eligible or not _candidate_evidence_eligible(asset):
         act = 0.0
 
     scaffold_score = _sf(item.get("score"))
@@ -845,7 +945,7 @@ def validated_exact_weights(
         # different sleeve by pre-populating these fields.
         item["economic_subtype"] = classification["economic_subtype"]
         item["economic_sleeve"] = classification["economic_sleeve"]
-        if not classification["allocatable"] and item.get("economic_sleeve") not in SLEEVE_ORDER:
+        if not classification["allocatable"] or not _candidate_evidence_eligible(item):
             item["activation"] = 0.0
         else:
             item["activation"] = activation(
@@ -1070,7 +1170,7 @@ def global_whole_lot_projection(
         item = rows[index]
         # A zero target can be rounding, or a prior rejection. Only the original
         # positive approved set may receive redistributed whole-lot capacity.
-        if weighted_by_key.get(_identity(item), 0.0) <= EPS:
+        if weighted_by_key.get(_identity(item), 0.0) <= EPS or not _candidate_evidence_eligible(item):
             continue
         price = _sf(item.get("portfolio_price") or item.get("price"))
         price_cents = int(round(price * 100.0))
@@ -1424,6 +1524,8 @@ def production_projection(
         )
 
     for item in projected:
+        if _sf(item.get("suggested_amount")) > 0.0 and not _candidate_evidence_eligible(item):
+            raise AssertionError("Projection allocated a candidate with failed input evidence")
         amount_cents = int(round(max(0.0, _sf(item.get("suggested_amount"))) * 100.0))
         if cap_cents is not None and max_candidate_fraction_is_hard:
             amount_cents = min(amount_cents, cap_cents)
@@ -1462,6 +1564,8 @@ def production_projection(
     for item in projected:
         if _sf(item.get("suggested_amount")) > 0.0 and _identity(item) not in approved_keys:
             raise AssertionError("Projection reintroduced a rejected candidate")
+        if _sf(item.get("suggested_amount")) > 0.0 and not _candidate_evidence_eligible(item):
+            raise AssertionError("Projection allocated a candidate with failed input evidence")
         item["allocation_weight_validated"] = (
             _sf(item.get("suggested_amount")) / budget if budget > 0 else 0.0
         )
@@ -1527,7 +1631,7 @@ def clamp_ai_ranking_to_deterministic(
                 action = "consider"
             action = action if action in valid_actions else "watch"
             ceiling = max(0.0, _sf(item.get("suggested_amount"))) if has_budget else None
-            if item.get("allocation_eligible") is False:
+            if item.get("allocation_eligible") is False or not _candidate_evidence_eligible(item):
                 ceiling = 0.0 if has_budget else None
                 if action == "consider":
                     action = "watch"

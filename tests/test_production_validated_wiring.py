@@ -13,7 +13,8 @@ def _indication_body() -> str:
 def test_runtime_uses_fixed_risk_signal_scaffold_and_separate_five_year_risk_feed():
     body = _indication_body()
     assert "risk_tolerance=SIGNAL_SCAFFOLD_RISK" in body
-    assert 'risk_history_period = "5y"' in body
+    assert 'risk_history_period = "5y_risk"' in body
+    assert "require_session_dates=True" in body
     assert 'risk_fx_history_period = "5y_risk"' in body
     assert "self._convert_history(" in body
     assert "weekly_return_map_from_points(" in body
@@ -35,7 +36,7 @@ def test_full_ai_can_only_reduce_validated_deterministic_allocation():
     assert "sanitize_ai_ranking(" not in body
 
 
-def test_nontradable_and_unknown_exposures_are_removed_before_market_history_fetch():
+def test_provisional_exposure_classification_precedes_overlap_and_history_fetch():
     body = _indication_body()
     classification = body.index("classification = classify_economic_exposure(asset)")
     overlap = body.index("overlap_rows = await asyncio.gather")
@@ -43,12 +44,13 @@ def test_nontradable_and_unknown_exposures_are_removed_before_market_history_fet
     assert classification < overlap < history
 
 
-def test_risk_fx_feed_is_weekly_and_historical_fx_is_single_flight_cached():
+def test_risk_fx_uses_observed_daily_history_and_single_flight_cache():
     provider = (ROOT / "custom_components" / "investment" / "providers" / "frankfurter.py").read_text(encoding="utf-8")
     assert '"5y_risk": 5 * 370' in provider
-    assert 'period in {"1y", "5y_risk"}' in provider
+    assert 'if not raw_daily and period in {"1y", "5y", "5y_risk"}' in provider
+    assert '"raw_daily": True' in MANAGER
     assert 'self._fx_history_locks' in MANAGER
-    assert '("fx_history", norm_currency, norm_base, period)' in MANAGER
+    assert '("fx_history_observed_daily_v1", norm_currency, norm_base, period)' in MANAGER
 
 
 def test_user_facing_label_and_ai_prompt_cannot_override_validated_suitability():
