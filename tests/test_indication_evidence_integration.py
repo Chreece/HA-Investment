@@ -10,6 +10,7 @@ import asyncio
 from copy import deepcopy
 from datetime import datetime, timezone
 import importlib
+import json
 import math
 from pathlib import Path
 import sys
@@ -167,6 +168,7 @@ def _indication(env, **kwargs):
     options = {
         "candidates": [deepcopy(env.candidate)], "scope": "search", "amount": 1000,
         "overlap_policy": "allow", "risk_tolerance": "very_high", "horizon": "medium",
+        "execution_costs": {"confirmed": True, "fixed_fee": 0, "commission_pct": 0, "spread_bps": 0, "fx_bps": 0},
     }
     options.update(kwargs)
     return asyncio.run(env.manager.async_indication("fixture-user", **options))
@@ -190,6 +192,281 @@ def test_positive_control_real_provider_parser_and_runtime_can_allocate(environm
     assert result["allocation"]["deployed"] > 0
     assert result["results"][0]["allocation_eligible"] is True
     assert result["results"][0]["suggested_amount"] > 0
+
+
+def test_unconfirmed_costs_block_production_purchases_with_visible_reason(environment):
+    result = _indication(environment, execution_costs=None)
+    _assert_abstains(result)
+    assert result["allocation"]["execution_costs"]["status"] == "unknown"
+    assert "execution_costs_unknown" in result["allocation"]["portfolio_risk"]["blockers"]
+    assert result["preferences"]["execution_costs"] is None
+
+
+@pytest.mark.parametrize("mode", ["deterministic", "full_ai"])
+@pytest.mark.parametrize("whole", [False, True])
+def test_production_final_plan_preserves_fees_cash_and_optional_risk_inputs(environment, mode, whole):
+    environment.manager._ai_indication_review = AsyncMock(return_value={"structured": {"ranking": []}})
+    costs = {"confirmed": True, "fixed_fee": 2., "commission_pct": .25, "spread_bps": 12., "fx_bps": 10.}
+    result = _indication(
+        environment, mode=mode, whole_units_only=whole, execution_costs=costs,
+        existing_cash=123., max_drawdown_pct=20., analysis_horizon_weeks=52,
+    )
+    allocation = result["ai_allocation" if mode == "full_ai" else "allocation"]
+    summary = allocation["execution_costs"]
+    portfolio = allocation["portfolio_risk"]
+    assert summary["purchase_count"] == 1
+    assert summary["estimated_transaction_cost"] == pytest.approx(2 + summary["principal"] * .0047 + summary["rounding_allowance"], abs=1e-9)
+    assert summary["principal"] + summary["estimated_transaction_cost"] <= summary["estimated_cash_debit"] + 1e-8
+    assert summary["estimated_cash_debit"] <= 1000
+    assert allocation["cash_reserve"] == pytest.approx(1000 - summary["estimated_cash_debit"])
+    assert portfolio["portfolio_value_before"] == 1123
+    assert portfolio["before_purchases"]["cash"] == 1123
+    assert portfolio["cash_after"] == pytest.approx(123 + allocation["cash_reserve"])
+    assert portfolio["portfolio_value_after"] == pytest.approx(1123 - summary["estimated_transaction_cost"])
+    assert portfolio["limits"]["max_drawdown_3y"] == .2
+    assert portfolio["evidence"]["horizon"]["horizon_weeks"] == 52
+    stored = environment.manager.store.async_set_preferences.call_args.kwargs["indication_preferences"]
+    for key in ("execution_costs", "existing_cash", "max_drawdown_pct", "analysis_horizon_weeks"):
+        assert result["preferences"][key] == stored[key]
+    if whole:
+        row = result["results"][0]
+        unit_key = "ai_suggested_units" if mode == "full_ai" else "suggested_units"
+        assert row[unit_key] == math.floor(row[unit_key])
+        assert row["whole_unit_selected"] is (row[unit_key] >= 1)
+    json.dumps(result, allow_nan=False)
+
+
+def _portfolio_with(environment, holdings):
+    # Real storage migrates legacy aggregates to authoritative dated BUY rows.
+    # Test holdings mirror that boundary; explicit malformed ledgers are retained.
+    for index, holding in enumerate(holdings):
+        if "transactions" not in holding:
+            quantity = holding.get("personal_quantity", holding.get("quantity"))
+            holding["transactions"] = [{"id": f"held-buy-{index}", "type": "buy", "date": "2020-01-02", "quantity": quantity}]
+    environment.modules.core.InvestmentManager.async_portfolio.return_value = {
+        "holdings": holdings, "categories": [], "total": sum(h.get("value", 0) for h in holdings),
+    }
+    environment.manager.store.async_user.return_value["holdings"] = deepcopy(holdings)
+
+
+def test_display_timeout_cannot_hide_positive_authoritative_ledger_quantity(environment):
+    _portfolio_with(environment, [{
+        **environment.candidate, "quantity": 0., "value": 0., "status": "error",
+        "transactions": [{"id": "positive-ledger-buy", "type": "buy", "date": "2026-01-02", "quantity": 100.}],
+    }])
+    result = _indication(environment)
+    portfolio = result["allocation"]["portfolio_risk"]
+    assert portfolio["existing_value"] == pytest.approx(100 * environment.quote["meta"]["regularMarketPrice"])
+    assert portfolio["portfolio_value_before"] > 10000
+    assert "sleeve:single_equity" in portfolio["baseline_breaches"]
+    assert result["allocation"]["deployed"] < 1e-6
+
+
+@pytest.mark.parametrize("transactions", [None, [], [{"id": "bad", "type": "buy", "date": "2020-01-02", "quantity": math.nan}]])
+def test_missing_or_invalid_ledger_cannot_be_certified_from_zero_display_quantity(environment, transactions):
+    _portfolio_with(environment, [{**environment.candidate, "quantity": 0., "status": "error", "transactions": transactions}])
+    result = _indication(environment)
+    _assert_abstains(result)
+    portfolio = result["allocation"]["portfolio_risk"]
+    assert portfolio["status"] == "unknown"
+    assert portfolio["existing_value"] is None
+    assert portfolio["existing_position_issues"][0]["symbol"] == environment.candidate["symbol"]
+    assert portfolio["existing_position_issues"][0]["reasons"]
+
+
+def test_fully_shared_buy_is_verified_zero_personal_exposure(environment):
+    _portfolio_with(environment, [{
+        **environment.candidate, "quantity": 100., "value": 10000.,
+        "transactions": [{"id": "fully-shared-buy", "type": "buy", "date": "2020-01-02", "quantity": 100.,
+                          "shared_allocations": [{"participant": "Participant fixture", "quantity": 100.}]}],
+    }])
+    result = _indication(environment)
+    portfolio = result["allocation"]["portfolio_risk"]
+    assert portfolio["existing_value"] == 0
+    assert portfolio["existing_position_issues"] == []
+    assert result["allocation"]["deployed"] > 0
+
+
+def test_complete_portfolio_reuses_fresh_candidate_quote_and_personal_ledger_quantity(environment):
+    _portfolio_with(environment, [{**environment.candidate, "personal_quantity": 2., "quantity": 1000., "value": 9000.}])
+    result = _indication(environment, existing_cash=100.)
+    portfolio = result["allocation"]["portfolio_risk"]
+    assert portfolio["existing_value"] == pytest.approx(2 * result["results"][0]["portfolio_price"])
+    assert portfolio["portfolio_value_before"] == pytest.approx(portfolio["existing_value"] + 1100)
+    requests = [call.args[1:3] for call in environment.manager.yahoo._chart.await_args_list]
+    assert requests.count(("5d", "1d")) == 1
+    assert requests.count(("1y", "1d")) == 1
+    assert requests.count(("5y", "1d")) == 1
+
+
+def test_held_instrument_outside_purchase_candidates_is_fetched_and_checked(environment, monkeypatch):
+    held = {**environment.candidate, "provider_id": "SXR8.DE", "symbol": "SXR8.DE", "name": "iShares Core S&P 500 UCITS ETF USD Accumulating", "category": "etf", "quantity": 2., "value": 200.}
+    _portfolio_with(environment, [held])
+    original = environment.manager.yahoo._chart.side_effect
+
+    async def chart(provider_id, range_, interval, **kwargs):
+        payload = await original(provider_id, range_, interval, **kwargs)
+        payload["meta"].update(symbol=provider_id, instrumentType="ETF" if provider_id == "SXR8.DE" else "EQUITY")
+        return payload
+
+    environment.manager.yahoo._chart.side_effect = chart
+    original_plan = environment.modules.core.finalize_purchase_plan
+    checked_positions = []
+
+    def checked_plan(*args, **kwargs):
+        checked_positions.extend(kwargs.get("existing_positions", []))
+        return original_plan(*args, **kwargs)
+
+    monkeypatch.setattr(environment.modules.core, "finalize_purchase_plan", checked_plan)
+    result = _indication(environment, existing_instruments="exclude")
+    assert [row["symbol"] for row in result["results"]] == ["SAP.DE"]
+    portfolio = result["allocation"]["portfolio_risk"]
+    assert portfolio["existing_value"] == pytest.approx(2 * environment.quote["meta"]["regularMarketPrice"]), [(p.get("symbol"), p.get("input_evidence_blockers"), p.get("metrics", {}).get("input_evidence_error")) for p in checked_positions]
+    assert portfolio["status"] == "within_limits"
+    assert any(call.args[0] == "SXR8.DE" and call.args[1:3] == ("5y", "1d") for call in environment.manager.yahoo._chart.await_args_list)
+
+
+@pytest.mark.parametrize("quantity", [None, True, math.nan, -1])
+def test_invalid_held_quantity_reaches_complete_portfolio_gate(environment, quantity):
+    _portfolio_with(environment, [{**environment.candidate, "quantity": quantity, "value": 10.}])
+    result = _indication(environment)
+    _assert_abstains(result)
+    portfolio = result["allocation"]["portfolio_risk"]
+    assert portfolio["status"] == "unknown"
+    assert portfolio["existing_value"] is None
+    assert "existing_position_value_unavailable" in portfolio["blockers"]
+
+
+def test_unverified_held_fund_blocks_even_when_excluded_from_candidate_set(environment):
+    held = {**environment.candidate, "provider_id": "UNKNOWN.DE", "symbol": "UNKNOWN.DE", "category": "etf", "quantity": 1., "value": 100.}
+    _portfolio_with(environment, [held])
+    result = _indication(environment, existing_instruments="exclude")
+    _assert_abstains(result)
+    assert result["allocation"]["portfolio_risk"]["status"] == "unknown"
+    assert result["allocation"]["portfolio_risk"]["scope"] == "complete_portfolio"
+    assert result["allocation"]["portfolio_risk"]["post"] is None
+
+
+def test_explicit_ignored_portfolio_has_distinct_scope_and_excludes_other_cash(environment):
+    _portfolio_with(environment, [{**environment.candidate, "quantity": None, "value": 10.}])
+    result = _indication(environment, portfolio_context="ignore", existing_cash=500.)
+    assert result["allocation"]["deployed"] > 0
+    portfolio = result["allocation"]["portfolio_risk"]
+    assert portfolio["scope"] == "new_contribution_only"
+    assert portfolio["existing_cash"] == 0
+    assert portfolio["portfolio_value_before"] == 1000
+
+
+@pytest.mark.parametrize("mode", ["deterministic_ai", "full_ai"])
+@pytest.mark.parametrize("whole", [False, True])
+def test_ai_latency_rechecks_freshness_before_returning_final_purchases(environment, mode, whole):
+    async def slow_review(*args, **kwargs):
+        environment.clock.now += 10 * DAY
+        return {"structured": {"ranking": [{**environment.candidate, "score": 100, "action": "buy", "suggested_amount": 100000, "reason": "adversarial"}]}}
+
+    environment.manager._ai_indication_review = AsyncMock(side_effect=slow_review)
+    result = _indication(environment, mode=mode, whole_units_only=whole)
+    _assert_abstains(result)
+    assert result["ai_review"] is None
+    if mode == "full_ai":
+        assert result["ai_allocation"]["deployed"] == 0
+        assert all(row["ai_suggested_amount"] == 0 for row in result["results"])
+    if whole:
+        assert all(row["whole_unit_selected"] is False for row in result["results"])
+
+
+@pytest.mark.parametrize("change", ["new_holding", "changed_transaction", "base_currency"])
+@pytest.mark.parametrize("mode", ["deterministic_ai", "full_ai"])
+def test_concurrent_portfolio_edit_cannot_leave_a_stale_complete_portfolio_plan(environment, change, mode):
+    if change == "changed_transaction":
+        _portfolio_with(environment, [{**environment.candidate, "quantity": 1., "value": 100.}])
+
+    async def changed_review(*args, **kwargs):
+        user = environment.manager.store.async_user.return_value
+        if change == "base_currency":
+            user["base_currency"] = "USD"
+        elif change == "changed_transaction":
+            user["holdings"][0]["transactions"][0]["quantity"] = 100.
+        else:
+            user["holdings"] = [{**environment.candidate, "quantity": 0., "transactions": [
+                {"id": "concurrent-buy", "type": "buy", "date": "2026-01-02", "quantity": 100.},
+            ]}]
+        return {"structured": {"ranking": [{**environment.candidate, "score": 100, "action": "buy", "suggested_amount": 100000}]}}
+
+    environment.manager._ai_indication_review = AsyncMock(side_effect=changed_review)
+    result = _indication(environment, mode=mode)
+    _assert_abstains(result)
+    portfolio = result["allocation"]["portfolio_risk"]
+    assert portfolio["ledger_changed_during_analysis"] is True
+    assert portfolio["portfolio_snapshot_issue"] == ("portfolio_currency_changed_during_analysis" if change == "base_currency" else "portfolio_ledger_changed_during_analysis")
+    assert portfolio["status"] == "unknown"
+    assert portfolio["post"] is None
+    assert result["ai_review"] is None
+    if mode == "full_ai":
+        assert result["ai_allocation"]["deployed"] == 0
+        assert result["ai_allocation"]["portfolio_risk"]["ledger_changed_during_analysis"] is True
+
+
+def test_ignored_portfolio_scope_is_explicit_and_does_not_claim_concurrent_ledger_verification(environment):
+    async def changed_review(*args, **kwargs):
+        environment.manager.store.async_user.return_value["holdings"] = [{"transactions": None}]
+        return {"structured": {}}
+
+    environment.manager._ai_indication_review = AsyncMock(side_effect=changed_review)
+    result = _indication(environment, mode="deterministic_ai", portfolio_context="ignore")
+    assert result["allocation"]["deployed"] > 0
+    portfolio = result["allocation"]["portfolio_risk"]
+    assert portfolio["scope"] == "new_contribution_only"
+    assert portfolio["ledger_changed_during_analysis"] is False
+
+
+def test_currency_change_blocks_even_when_holdings_are_explicitly_ignored(environment):
+    async def changed_review(*args, **kwargs):
+        environment.manager.store.async_user.return_value["base_currency"] = "USD"
+        return {"structured": {"verdict": "approve", "summary": "This old currency view must not survive"}}
+
+    environment.manager._ai_indication_review = AsyncMock(side_effect=changed_review)
+    result = _indication(environment, mode="deterministic_ai", portfolio_context="ignore")
+    _assert_abstains(result)
+    assert result["ai_review"] is None
+    portfolio = result["allocation"]["portfolio_risk"]
+    assert portfolio["scope"] == "new_contribution_only"
+    assert portfolio["status"] == "unknown"
+    assert portfolio["ledger_changed_during_analysis"] is True
+    assert portfolio["portfolio_snapshot_issue"] == "portfolio_currency_changed_during_analysis"
+
+
+@pytest.mark.parametrize("malformed", [None, False, {}])
+@pytest.mark.parametrize("stage", ["initial", "final"])
+def test_unknown_holding_membership_cannot_compare_equal_as_an_empty_book(environment, malformed, stage):
+    if stage == "initial":
+        environment.modules.core.InvestmentManager.async_portfolio.return_value["holdings"] = malformed
+
+    async def review(*args, **kwargs):
+        if stage == "final":
+            environment.manager.store.async_user.return_value["holdings"] = malformed
+        return {"structured": {"verdict": "approve"}}
+
+    environment.manager._ai_indication_review = AsyncMock(side_effect=review)
+    result = _indication(environment, mode="deterministic_ai")
+    _assert_abstains(result)
+    assert result["ai_review"] is None
+    portfolio = result["allocation"]["portfolio_risk"]
+    assert portfolio["status"] == "unknown"
+    assert portfolio["portfolio_snapshot_issue"] == "portfolio_ledger_snapshot_unavailable"
+
+
+@pytest.mark.parametrize("field,bad", [
+    ("existing_cash", True), ("existing_cash", math.inf), ("existing_cash", -1),
+    ("max_drawdown_pct", True), ("max_drawdown_pct", 0), ("max_drawdown_pct", 101), ("max_drawdown_pct", math.nan),
+    ("analysis_horizon_weeks", True), ("analysis_horizon_weeks", 0), ("analysis_horizon_weeks", 1.5), ("analysis_horizon_weeks", 5201),
+    ("execution_costs", {"confirmed": True, "fixed_fee": None, "commission_pct": 0, "spread_bps": 0, "fx_bps": 0}),
+])
+def test_invalid_new_preferences_fail_before_persistence_or_market_fetch(environment, field, bad):
+    with pytest.raises(ValueError):
+        _indication(environment, **{field: bad})
+    environment.manager.store.async_set_preferences.assert_not_called()
+    environment.manager.yahoo._chart.assert_not_called()
 
 
 def test_long_signals_and_daily_risk_keep_distinct_provider_provenance(environment):

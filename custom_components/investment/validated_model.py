@@ -706,29 +706,69 @@ def portfolio_weekly_returns(
         return []
     weeks = sorted(set.intersection(*(set(values) for _, values in maps)))
     # risk_signature requires at least MIN_RISK_HISTORY_WEEKS common periods.
-    return [sum(weight * values[week] for weight, values in maps) for week in weeks]
+    try:
+        returns = [math.fsum(weight * values[week] for weight, values in maps) for week in weeks]
+    except (ValueError, OverflowError):
+        return []
+    if any(not math.isfinite(value) or value < -1.0 for value in returns):
+        return []
+    return returns
+
+
+def _validated_return_series(returns: Any) -> list[float] | None:
+    """Return observations without replacing corrupt values by cash returns."""
+    if not isinstance(returns, (list, tuple)):
+        return None
+    clean: list[float] = []
+    for value in returns:
+        if isinstance(value, bool):
+            return None
+        number = _sf(value, math.nan)
+        if not math.isfinite(number) or number < -1.0:
+            return None
+        clean.append(number)
+    return clean
 
 
 def expected_shortfall_loss(returns: list[float]) -> float | None:
-    if len(returns) < 30:
+    """Exact empirical ES95, reported as a nonnegative loss fraction.
+
+    Integrating the empirical lower 5% quantile assigns fractional mass to the
+    observation at the boundary. For 52 weeks this is two complete weeks plus
+    0.6 of the third, divided by 2.6; averaging three complete weeks understates
+    the exact tail loss. This definition does not imply predictive coverage.
+    """
+    clean = _validated_return_series(returns)
+    if clean is None or len(clean) < 30:
         return None
-    ordered = sorted(returns)
-    count = max(1, int(math.ceil(0.05 * len(ordered))))
-    return max(0.0, -statistics.fmean(ordered[:count]))
+    ordered = sorted(clean)
+    if ordered[0] >= 0.0:
+        return 0.0
+    tail_mass = len(ordered) / 20.0
+    complete = int(math.floor(tail_mass))
+    fraction = tail_mass - complete
+    contributions = [value / tail_mass for value in ordered[:complete]]
+    if fraction > 0.0:
+        contributions.append(ordered[complete] * (fraction / tail_mass))
+    # Dividing before summation also avoids overflow in a valid but extreme
+    # positive tail; negative simple returns are bounded below by -1.
+    return max(0.0, -math.fsum(contributions))
 
 
 def path_max_drawdown_loss(returns: list[float]) -> float | None:
-    if not returns:
+    clean = _validated_return_series(returns)
+    if not clean:
         return None
-    value = 1.0
-    peak = 1.0
+    log_value = 0.0
+    log_peak = 0.0
     worst = 0.0
-    for ret in returns:
-        value *= 1.0 + ret
-        peak = max(peak, value)
-        if peak > 0:
-            worst = min(worst, value / peak - 1.0)
-    return abs(worst)
+    for ret in clean:
+        if ret == -1.0:
+            return 1.0
+        log_value += math.log1p(ret)
+        log_peak = max(log_peak, log_value)
+        worst = max(worst, -math.expm1(log_value - log_peak))
+    return worst
 
 
 def risk_signature(weighted: Iterable[tuple[dict[str, Any], float]]) -> dict[str, Any]:
@@ -740,15 +780,33 @@ def risk_signature(weighted: Iterable[tuple[dict[str, Any], float]]) -> dict[str
             "max_drawdown_3y": None,
             "weekly_observations_3y": len(returns),
         }
+    try:
+        volatility = statistics.pstdev(returns) * math.sqrt(52.0)
+    except (ValueError, OverflowError):
+        volatility = None
+    if volatility is not None and not math.isfinite(volatility):
+        volatility = None
     return {
-        "annualized_volatility_3y": statistics.pstdev(returns) * math.sqrt(52.0),
+        "annualized_volatility_3y": volatility,
         "expected_shortfall_95_weekly_3y": expected_shortfall_loss(returns),
         "max_drawdown_3y": path_max_drawdown_loss(returns),
         "weekly_observations_3y": len(returns),
     }
 
 
-def within_risk_target(signature: dict[str, Any], risk: str) -> bool:
+def within_risk_target(
+    signature: dict[str, Any],
+    risk: str,
+    *,
+    max_drawdown_loss: float | None = None,
+) -> bool:
+    """Check the established vol/ES envelope and an optional explicit loss cap.
+
+    Drawdown is a historical path statistic, never a future-loss guarantee. No
+    user drawdown tolerance is inferred from a named risk profile. A supplied
+    bound is strict (apart from floating-point epsilon), without the legacy
+    volatility/ES calibration tolerance.
+    """
     vol = signature.get("annualized_volatility_3y")
     es = signature.get("expected_shortfall_95_weekly_3y")
     if isinstance(vol, bool) or isinstance(es, bool):
@@ -765,6 +823,20 @@ def within_risk_target(signature: dict[str, Any], risk: str) -> bool:
         or observations < MIN_RISK_HISTORY_WEEKS
     ):
         return False
+    if max_drawdown_loss is not None:
+        limit = _sf(max_drawdown_loss, math.nan)
+        drawdown = signature.get("max_drawdown_3y")
+        observed = _sf(drawdown, math.nan)
+        if (
+            isinstance(max_drawdown_loss, bool)
+            or not math.isfinite(limit)
+            or not 0.0 <= limit <= 1.0
+            or isinstance(drawdown, bool)
+            or not math.isfinite(observed)
+            or not 0.0 <= observed <= 1.0
+            or observed > limit + EPS
+        ):
+            return False
     return (
         vol <= PORTFOLIO_VOL_TARGET[risk] * RISK_TOLERANCE
         and es <= PORTFOLIO_WEEKLY_ES95_TARGET[risk] * RISK_TOLERANCE

@@ -1,0 +1,47 @@
+{
+  "schema": "ha-investment-predeclared-experiment-v1",
+  "declared_before_outcomes": true,
+  "purpose": "Retrospective engineering and investment comparison, with no automatic promotion or parameter fitting",
+  "baseline_commit": "f9c69933dbe79fdeeeb9fe78183095e184c2f30d",
+  "defaults": {
+    "risk": "medium",
+    "contribution": 100.0,
+    "start": "2022-11-01",
+    "development_end": "2024-12-31",
+    "end": "2026-10-05",
+    "whole_units": false,
+    "max_drawdown_loss": 0.20,
+    "fixed_fee": 1.0,
+    "commission_bps": 0.0,
+    "execution_bps": 10.0,
+    "shrinkage": 0.50,
+    "trend_weeks": 40,
+    "vol_smoothing": 0.25
+  },
+  "primary_risks": ["low", "medium"],
+  "sensitivity_scenarios": [
+    {"label": "zero_fees", "fixed_fee": 0.0, "execution_bps": 0.0, "strategies": ["frozen_v13", "current", "strategic", "contribution_directed", "fixed_diagonal_shrinkage", "robust_windows", "smoothed_volatility_cap", "long_only_trend"]},
+    {"label": "contribution_50", "contribution": 50.0, "strategies": ["frozen_v13", "current", "contribution_directed"]},
+    {"label": "contribution_250", "contribution": 250.0, "strategies": ["frozen_v13", "current", "contribution_directed"]},
+    {"label": "whole_units", "whole_units": true, "strategies": ["frozen_v13", "current", "contribution_directed"]},
+    {"label": "drawdown_unset", "max_drawdown_loss": null, "strategies": ["current", "contribution_directed"]},
+    {"label": "shrinkage_025", "shrinkage": 0.25, "strategies": ["fixed_diagonal_shrinkage"]},
+    {"label": "shrinkage_075", "shrinkage": 0.75, "strategies": ["fixed_diagonal_shrinkage"]},
+    {"label": "trend_30_weeks", "trend_weeks": 30, "strategies": ["long_only_trend"]},
+    {"label": "trend_50_weeks", "trend_weeks": 50, "strategies": ["long_only_trend"]},
+    {"label": "inflation_assumption_02", "annual_inflation_assumption": 0.02, "strategies": ["frozen_v13", "current"]},
+    {"label": "preexisting_equity_50_units", "initial_positions": [["EUNL.DE", 50.0]], "initial_cash": 500.0, "strategies": ["frozen_v13", "current", "contribution_directed"]}
+  ],
+  "synthetic_regimes": ["persistent_decline", "v_rebound", "joint_stock_bond_loss", "flat_cost_drag", "late_inception"],
+  "criteria": {
+    "must": ["no future input in decisions", "no missing-price execution", "no purchases before exact inception", "nonnegative cash", "all costs and failed trials retained", "contributions cannot improve unitized performance by themselves", "no automatic promotion of research challengers"],
+    "report": ["after-cost nominal wealth", "unitized drawdown", "time under water", "after-cost weekly ES", "volatility", "costs", "turnover", "abstentions", "execution rejections", "historical risk breaches", "parameter sensitivity"]
+  },
+  "limitations": [
+    "This is known historical data, not a prospective untouched holdout. The fixed chronological split is an evaluation partition, not proof against research-selection bias.",
+    "No parameter is selected by performance. Every listed sensitivity is reported, including ties and deterioration.",
+    "Current surviving fund universe and current adjusted-history vintage can introduce survivorship and revision effects.",
+    "Illustrative costs, 20% drawdown policy and optional 2% inflation are assumptions, not calibrated personal recommendations.",
+    "Futures trend and optimal covariance-shrinkage research are motivation only. This bounded long-only fixed-shrinkage experiment makes no claim to reproduce those papers."
+  ]
+}

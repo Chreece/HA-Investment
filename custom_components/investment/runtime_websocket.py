@@ -35,6 +35,10 @@ _INDICATION_FIELDS = {
     vol.Optional("portfolio_context", default="use"): vol.In(["use", "ignore"]),
     vol.Optional("existing_instruments", default="allow"): vol.In(["allow", "exclude"]),
     vol.Optional("response_language"): vol.Any(None, str),
+    vol.Optional("execution_costs"): vol.Any(None, dict),
+    vol.Optional("existing_cash", default=0.0): vol.Any(float, int),
+    vol.Optional("max_drawdown_pct"): vol.Any(None, float, int),
+    vol.Optional("analysis_horizon_weeks"): vol.Any(None, int),
 }
 
 
@@ -83,6 +87,10 @@ def _indication_kwargs(msg: dict[str, Any]) -> dict[str, Any]:
         "portfolio_context": msg.get("portfolio_context", "use"),
         "existing_instruments": msg.get("existing_instruments", "allow"),
         "response_language": msg.get("response_language"),
+        "execution_costs": msg.get("execution_costs"),
+        "existing_cash": msg.get("existing_cash", 0.0),
+        "max_drawdown_pct": msg.get("max_drawdown_pct"),
+        "analysis_horizon_weeks": msg.get("analysis_horizon_weeks"),
     }
 
 

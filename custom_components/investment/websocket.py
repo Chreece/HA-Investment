@@ -494,6 +494,13 @@ async def ws_category_expense(hass: HomeAssistant, connection, msg: dict[str, An
         vol.Optional("min_confidence_pct", default=45.0): vol.Coerce(float),
         vol.Optional("min_cash_reserve_pct", default=0.0): vol.Coerce(float),
         vol.Optional("whole_units_only", default=False): bool,
+        vol.Optional("whole_unit_categories", default=[]): [vol.In(["crypto", "etf", "stock", "fund", "index", "commodity", "fx", "other"])],
+        vol.Optional("portfolio_context", default="use"): vol.In(["use", "ignore"]),
+        vol.Optional("existing_instruments", default="allow"): vol.In(["allow", "exclude"]),
+        vol.Optional("execution_costs"): vol.Any(None, dict),
+        vol.Optional("existing_cash", default=0.0): vol.Any(float, int),
+        vol.Optional("max_drawdown_pct"): vol.Any(None, float, int),
+        vol.Optional("analysis_horizon_weeks"): vol.Any(None, int),
     }
 )
 @websocket_api.async_response
@@ -522,6 +529,13 @@ async def ws_indication(hass: HomeAssistant, connection, msg: dict[str, Any]) ->
             min_confidence_pct=msg.get("min_confidence_pct", 45.0),
             min_cash_reserve_pct=msg.get("min_cash_reserve_pct", 0.0),
             whole_units_only=bool(msg.get("whole_units_only", False)),
+            whole_unit_categories=msg.get("whole_unit_categories", []),
+            portfolio_context=msg.get("portfolio_context", "use"),
+            existing_instruments=msg.get("existing_instruments", "allow"),
+            execution_costs=msg.get("execution_costs"),
+            existing_cash=msg.get("existing_cash", 0.0),
+            max_drawdown_pct=msg.get("max_drawdown_pct"),
+            analysis_horizon_weeks=msg.get("analysis_horizon_weeks"),
         )
         connection.send_result(msg["id"], result)
     except Exception as err:

@@ -1,0 +1,10 @@
+{
+  "reviewed_at_utc": "2026-10-06T20:23:32.093705+00:00",
+  "audit_passed": true,
+  "economic_parameters_changed": false,
+  "exact_protocol": "execution_protocol.json",
+  "interpretation": "READOUT.md",
+  "promotion": "none_research_only",
+  "additional_manual_candidate_cap_fraction": 1.0,
+  "currency_order_not_previous_unit_count_order": true
+}

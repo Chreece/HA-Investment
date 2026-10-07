@@ -4,7 +4,7 @@ from __future__ import annotations
 DOMAIN = "investment"
 NAME = "HA Investment"
 VERSION = "0.4.0"
-PANEL_ASSET_REVISION = "0.4.0-r60"
+PANEL_ASSET_REVISION = "0.4.0-r61"
 PANEL_URL = "investment"
 PANEL_NAME = f"investment-panel-{PANEL_ASSET_REVISION.rsplit('-', 1)[-1]}"
 PANEL_TITLE = "Investments"
@@ -69,6 +69,10 @@ DEFAULT_INDICATION_PREFERENCES = {
     "whole_unit_categories": [],
     "portfolio_context": "use",
     "existing_instruments": "allow",
+    "execution_costs": None,
+    "existing_cash": 0.0,
+    "max_drawdown_pct": None,
+    "analysis_horizon_weeks": None,
 }
 
 SIGNAL_ENTITY_EXPOSURE_CHANGED = f"{DOMAIN}_entity_exposure_changed"
