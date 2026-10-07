@@ -36,6 +36,23 @@ def test_frozen_comparison_files_match_recorded_original_hashes():
         assert hashlib.sha256((ROOT / "research" / "frozen_v13" / filename).read_bytes()).hexdigest() == expected
 
 
+@pytest.mark.parametrize("filename", ["instrument_identity.py", "purchase_search.py"])
+def test_source_fingerprint_covers_live_dynamic_and_purchase_dependencies(filename, monkeypatch):
+    target = ROOT / "custom_components" / "investment" / filename
+    key = str(target.relative_to(ROOT))
+    before = research.source_fingerprint()
+    assert key in before
+    original = Path.read_bytes
+
+    def altered_bytes(path):
+        content = original(path)
+        return content + b"\n# independent fingerprint probe\n" if path == target else content
+
+    monkeypatch.setattr(Path, "read_bytes", altered_bytes)
+    after = research.source_fingerprint()
+    assert before[key] != after[key]
+
+
 def test_plan_is_explicit_about_all_trials_and_no_automatic_promotion():
     plan = json.loads((ROOT / "research" / "experiment_plan.json").read_text())
     assert plan["declared_before_outcomes"] is True

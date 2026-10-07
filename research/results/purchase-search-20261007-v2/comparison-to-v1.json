@@ -1,0 +1,33 @@
+{
+  "all_baseline_and_current_quantity_principal_cost_cash_debit_feasibility_results_identical": true,
+  "all_case_inputs_identical": true,
+  "all_oracle_evaluations_identical": true,
+  "all_search_results_except_new_risk_rejection_diagnostics_identical": true,
+  "both_ledgers_verified": true,
+  "case_count": 62,
+  "changed_source_fingerprints": {
+    "custom_components/investment/portfolio_plan.py": {
+      "v1": "083b7417d1f6ce313b7efc83dd42d903ab2cc4c60313a1c08f35d764b974f45c",
+      "v2": "309af79a10f8e414fd37516b7dedb6c6d01bfa4e614f43512493d566e1c4355c"
+    },
+    "custom_components/investment/purchase_search.py": {
+      "v1": "0167a5114b2c8b4a9df9bded578223041badd69c524e2e66d43c9de0c4870dcf",
+      "v2": "7ee29959c8aeced3b66cdf6249ce9ceb42cfb60679047c270bc949c17bb54af5"
+    }
+  },
+  "compared_at_utc": "2026-10-07T03:33:30.851282+00:00",
+  "current_run": "purchase-search-20261007-v2",
+  "passed": true,
+  "plan_bytes_identical": true,
+  "plan_sha256": "e333498879b0fd09130d2c4de7ec3eb6daa803a1d335e08d18558f80a449e9d6",
+  "policy_changed": false,
+  "previous_run": "purchase-search-20261007-v1",
+  "reason": "Metadata and explanation correction: distinguish affordable subsets rejected by portfolio risk from no affordable purchase. No numerical algorithm or economic policy change.",
+  "schema": "purchase-search-metadata-revision-comparison-v1",
+  "v1_original_file_sha256": {
+    "cases.jsonl": "ed3f62717c545ebbd3f94a7a0afafe48ee3e28d2c8f4869f7482121767f48723",
+    "predeclared_plan.json": "e333498879b0fd09130d2c4de7ec3eb6daa803a1d335e08d18558f80a449e9d6",
+    "summary.json": "45eb2ab2acb38a629ef07b06f0690117dac63be2b3bdcb64f21968551b4f18cc"
+  },
+  "v2_case_ledger_sha256": "2fb026bf621159736a44595046d7222d416e280811bc89562d05891ed5d64563"
+}

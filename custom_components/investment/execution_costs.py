@@ -91,6 +91,22 @@ def _float_down(value: Decimal) -> float:
     return result
 
 
+def _float_up(value: Decimal) -> float:
+    """Keep the exact marked principal inside its serialized numeric bound.
+
+    A nearest float can round the principal below ``units * raw_price``.
+    Reusing that output as the next purchase ceiling would then discard an
+    otherwise unchanged whole unit. The least float whose decimal spelling
+    covers the principal avoids that loss without changing cash accounting.
+    The caller first bounds quantities by a representable incoming ceiling,
+    so this serialization cannot increase the original purchase authority.
+    """
+    result = float(value)
+    if Decimal(str(result)) < value:
+        result = math.nextafter(result, math.inf)
+    return result
+
+
 def apply_execution_costs(
     rows: Iterable[dict[str, Any]],
     budget: float | int | Decimal | None,
@@ -214,7 +230,13 @@ def _apply_execution_costs(
             if not prefix:
                 row["allocation_eligible"] = False
             continue
-        units = min(old_units, ceiling / price)
+        # Public purchase amounts are JSON numbers. A float input already is
+        # a representable bound; a higher-precision Decimal input may not be.
+        # Narrow such a cap before deriving units, so the returned principal
+        # can cover their exact marked value without exceeding the caller's
+        # original cap. Never invent authority from prior output metadata.
+        serialized_ceiling = Decimal(str(_float_down(ceiling)))
+        units = min(old_units, serialized_ceiling / price)
         step = ONE if whole else UNIT_STEP
         units = units.quantize(step, rounding=ROUND_FLOOR)
         prepared.append((index, price, units, whole))
@@ -254,7 +276,9 @@ def _apply_execution_costs(
         row = output[index]
         before = _number(row.get(amount_key)) or ZERO
         row[units_key] = units
-        row[amount_key] = float(principal)
+        row[amount_key] = _float_up(principal)
+        if Decimal(str(row[amount_key])) > before:
+            raise AssertionError("Serialized purchase principal exceeded its ceiling")
         # All reserved cash beyond marked principal is reported as estimated cost,
         # with the cash-rounding component available separately for auditability.
         row[cost_key] = float(debit - principal)

@@ -624,7 +624,8 @@ def synthetic_document(regime="persistent_decline", sessions=1045):
 def source_fingerprint():
     files = [HERE / "chronological_validation.py", HERE / "experiment_plan.json"]
     files += sorted((HERE / "frozen_v13").glob("*.py"))
-    for filename in ("validated_model.py", "indication.py", "portfolio_plan.py", "risk_evidence.py", "execution_costs.py"):
+    for filename in ("validated_model.py", "indication.py", "instrument_identity.py", "portfolio_plan.py",
+                     "purchase_search.py", "risk_evidence.py", "execution_costs.py"):
         path = REPO / "custom_components" / "investment" / filename
         if path.exists():
             files.append(path)
