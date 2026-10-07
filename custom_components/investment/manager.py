@@ -3319,6 +3319,41 @@ class InvestmentManager:
         existing_positions: list[dict[str, Any]] = []
         evaluated_by_key = {self._candidate_key(item): item for item in results}
         position_requests: list[tuple[dict[str, Any], float, dict[str, Any]]] = []
+
+        def position_from_evaluated(
+            asset: dict[str, Any], quantity: float,
+            quantity_evidence: dict[str, Any], evaluated: dict[str, Any],
+        ) -> dict[str, Any]:
+            # A shared provider ID permits source reuse, not reuse of another
+            # record's identity assertions. Validate every held record against
+            # the actual observed metadata, including same-key duplicates.
+            identity = resolve_instrument_identity(
+                asset, provider_metadata=evaluated.get("instrument_metadata"),
+                as_of=evaluated.get("evidence_as_of_date"),
+            )
+            blockers = list(dict.fromkeys([
+                *(evaluated.get("input_evidence_blockers") or []),
+                *identity["instrument_identity_blockers"],
+            ]))
+            position = {
+                **evaluated, **asset, **identity,
+                "instrument_identity": identity,
+                "quantity": quantity,
+                "position_quantity_evidence": quantity_evidence,
+                "input_evidence_contract": "source-time-and-exact-identity-v1",
+                "input_evidence_blockers": blockers,
+                "data_quality_eligible": (
+                    evaluated.get("data_quality_eligible") is True
+                    and identity["instrument_identity_eligible"] is True
+                ),
+            }
+            if not identity["instrument_identity_eligible"]:
+                position.update(allocation_eligible=False, activation=0.0, label="caution")
+                position["warnings"] = list(dict.fromkeys([
+                    *(evaluated.get("warnings") or []), *blockers,
+                ]))
+            return position
+
         if portfolio_context == "use":
             quantity_as_of = datetime.fromtimestamp(time.time(), dt_util.now().tzinfo or UTC)
             for holding in live_holdings:
@@ -3343,8 +3378,9 @@ class InvestmentManager:
                     continue
                 key = self._candidate_key(position_asset)
                 if key in evaluated_by_key:
-                    existing_positions.append({**evaluated_by_key[key], "quantity": quantity,
-                                               "position_quantity_evidence": quantity_evidence})
+                    existing_positions.append(position_from_evaluated(
+                        position_asset, quantity, quantity_evidence, evaluated_by_key[key],
+                    ))
                 else:
                     position_requests.append((position_asset, quantity, quantity_evidence))
             if position_requests:
@@ -3364,8 +3400,10 @@ class InvestmentManager:
                     else:
                         evaluated_by_key[key] = position_result
                 existing_positions.extend(
-                    {**evaluated_by_key[self._candidate_key(asset)], "quantity": quantity,
-                     "position_quantity_evidence": quantity_evidence}
+                    position_from_evaluated(
+                        asset, quantity, quantity_evidence,
+                        evaluated_by_key[self._candidate_key(asset)],
+                    )
                     for asset, quantity, quantity_evidence in position_requests
                 )
         evidence_as_of = time.time()
@@ -3549,26 +3587,38 @@ class InvestmentManager:
 
         ledger_changed_during_analysis = False
         portfolio_snapshot_issue = None
+        purchase_search_selections: dict[bool, tuple[tuple[Any, ...], dict[str, Any]]] = {}
+        purchase_plan_explanations: dict[bool, dict[str, Any]] = {}
 
-        def finalize_portfolio_plan(*, ai: bool = False, diagnostics: bool = False) -> None:
+        async def finalize_portfolio_plan(*, ai: bool = False, diagnostics: bool = False) -> None:
             nonlocal results, allocation, ai_allocation
-            rows, final_meta = finalize_purchase_plan(
-                results, amount, risk_tolerance,
-                existing_positions=existing_positions,
-                existing_cash=existing_cash if portfolio_context == "use" else 0.0,
-                execution_costs=execution_costs,
-                max_drawdown_loss=max_drawdown_pct / 100.0 if max_drawdown_pct is not None else None,
-                minimum_cash_reserve_fraction=min_cash_reserve_pct / 100.0,
-                max_candidate_fraction=effective_max_candidate_fraction,
-                # A failed account snapshot must also block purchase-only scope.
-                # Its sentinel is the only position when holdings were ignored.
-                portfolio_context="use" if portfolio_snapshot_issue else portfolio_context,
-                as_of=datetime.fromtimestamp(evidence_as_of, UTC).date(),
-                horizon_weeks=analysis_horizon_weeks,
-                amount_key="ai_suggested_amount" if ai else "suggested_amount",
-                units_key="ai_suggested_units" if ai else "suggested_units",
-                bootstrap_repetitions=128 if diagnostics else 0,
-            )
+            def calculate_plan():
+                return finalize_purchase_plan(
+                    results, amount, risk_tolerance,
+                    existing_positions=existing_positions,
+                    existing_cash=existing_cash if portfolio_context == "use" else 0.0,
+                    execution_costs=execution_costs,
+                    max_drawdown_loss=max_drawdown_pct / 100.0 if max_drawdown_pct is not None else None,
+                    minimum_cash_reserve_fraction=min_cash_reserve_pct / 100.0,
+                    max_candidate_fraction=effective_max_candidate_fraction,
+                    # A failed account snapshot must also block purchase-only scope.
+                    # Its sentinel is the only position when holdings were ignored.
+                    portfolio_context="use" if portfolio_snapshot_issue else portfolio_context,
+                    as_of=datetime.fromtimestamp(evidence_as_of, UTC).date(),
+                    horizon_weeks=analysis_horizon_weeks,
+                    amount_key="ai_suggested_amount" if ai else "suggested_amount",
+                    units_key="ai_suggested_units" if ai else "suggested_units",
+                    bootstrap_repetitions=128 if diagnostics else 0,
+                )
+            if diagnostics:
+                # Keep the final verification after the last source/ledger read
+                # synchronous: adding an await there would reopen that snapshot.
+                rows, final_meta = calculate_plan()
+            else:
+                # Searching combinations is pure work and can take about a
+                # second on large inputs. Home Assistant stays responsive; the
+                # existing final source/ledger checks follow this awaited job.
+                rows, final_meta = await self.hass.async_add_executor_job(calculate_plan)
             final_meta["portfolio_risk"]["scope"] = "complete_portfolio" if portfolio_context == "use" else "new_contribution_only"
             final_meta["portfolio_risk"]["existing_position_issues"] = [
                 {"symbol": position.get("symbol"), "provider": position.get("provider"),
@@ -3584,6 +3634,63 @@ class InvestmentManager:
             ]
             final_meta["portfolio_risk"]["ledger_changed_during_analysis"] = ledger_changed_during_analysis
             final_meta["portfolio_risk"]["portfolio_snapshot_issue"] = portfolio_snapshot_issue
+            search = final_meta.get("purchase_search")
+            if isinstance(search, dict):
+                # Rechecking a selected plan sees narrower ceilings. Preserve
+                # the original search's scope/completeness only while the
+                # selected purchases and source evidence remain unchanged.
+                # Otherwise a bounded all-zero result could appear exhaustive
+                # merely because the second pass has no positive inputs left.
+                prefix = "ai_" if ai else ""
+                selection = tuple(sorted(
+                    (str(row.get("provider") or ""), str(row.get("provider_id") or ""),
+                     str(row.get("symbol") or ""), row.get(f"{prefix}suggested_amount"),
+                     row.get(f"{prefix}suggested_units"))
+                    for row in rows
+                ))
+                previous_key = ai
+                previous = purchase_search_selections.get(ai)
+                if ai and previous is None:
+                    deterministic = purchase_search_selections.get(False)
+                    if deterministic is not None and deterministic[0] == selection:
+                        # AI that leaves every deterministic amount/unit intact
+                        # also leaves that search's scope and evidence intact.
+                        previous_key, previous = False, deterministic
+                final_meta["purchase_search_verification"] = dict(search)
+                if (
+                    previous is not None and previous[0] == selection
+                    and not portfolio_snapshot_issue and not final_evidence_changed
+                    and final_meta["portfolio_risk"]["status"] in {
+                        "within_limits", "existing_breach_not_worsened",
+                    }
+                ):
+                    final_meta["purchase_search"] = dict(previous[1])
+                    explanation = purchase_plan_explanations[previous_key]
+                    for target, key, recorded in (
+                        (final_meta["execution_costs"], "reasons", explanation["cost_reasons"]),
+                        (final_meta["portfolio_risk"], "blockers", explanation["risk_blockers"]),
+                    ):
+                        target[key] = list(dict.fromkeys([*(target.get(key) or []), *recorded]))
+                    for row in rows:
+                        identity = (str(row.get("provider") or ""), str(row.get("provider_id") or ""),
+                                    str(row.get("symbol") or ""))
+                        if row.get(f"{prefix}suggested_amount") == 0:
+                            for suffix, recorded in explanation["rows"].get(identity, {}).items():
+                                key = f"{prefix}{suffix}"
+                                row[key] = list(dict.fromkeys([*(row.get(key) or []), *recorded]))
+                else:
+                    purchase_search_selections[ai] = (selection, dict(search))
+                    purchase_plan_explanations[ai] = {
+                        "cost_reasons": list(final_meta["execution_costs"].get("reasons") or []),
+                        "risk_blockers": list(final_meta["portfolio_risk"].get("blockers") or []),
+                        "rows": {
+                            (str(row.get("provider") or ""), str(row.get("provider_id") or ""),
+                             str(row.get("symbol") or "")): {
+                                suffix: list(row.get(f"{prefix}{suffix}") or [])
+                                for suffix in ("execution_cost_blockers", "portfolio_risk_blockers")
+                            } for row in rows
+                        },
+                    }
             results = rows
             if ai:
                 ai_allocation = {**(ai_allocation or {}), **final_meta}
@@ -3592,7 +3699,8 @@ class InvestmentManager:
 
         # AI sees the affordable, full-portfolio constrained purchase ceilings.
         ai_allocation = None
-        finalize_portfolio_plan()
+        final_evidence_changed = False
+        await finalize_portfolio_plan()
 
         emit_progress(89, "risk_allocation", candidates=len(results))
         ai_review = None
@@ -3698,7 +3806,7 @@ class InvestmentManager:
             for item in results:
                 if mode == "full_ai":
                     item.update(ai_score=None, ai_reason="", ai_action="watch")
-        finalize_portfolio_plan(diagnostics=True)
+        await finalize_portfolio_plan(diagnostics=True)
         if mode == "full_ai":
             if amount is not None:
                 for item in results:
@@ -3707,7 +3815,7 @@ class InvestmentManager:
                             float(item.get(f"ai_{key}") or 0.0),
                             float(item.get(key) or 0.0),
                         )
-            finalize_portfolio_plan(ai=True, diagnostics=True)
+            await finalize_portfolio_plan(ai=True, diagnostics=True)
         if (whole_units_only or whole_unit_categories) and amount is not None:
             unit_key = "ai_suggested_units" if mode == "full_ai" else "suggested_units"
             for item in results:

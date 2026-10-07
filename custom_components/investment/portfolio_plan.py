@@ -14,10 +14,17 @@ from __future__ import annotations
 from collections import defaultdict
 from collections.abc import Iterable
 from datetime import date, datetime
+from decimal import Decimal
 import math
 from typing import Any
 
 from .execution_costs import apply_execution_costs
+from .purchase_search import (
+    prepare_whole_search,
+    proposed_rows,
+    risk_evaluation_limit,
+    search_metadata,
+)
 from .risk_evidence import dated_portfolio_returns, evaluate_risk_evidence
 from .validated_model import (
     ECONOMIC_SLEEVE_CAPS,
@@ -237,20 +244,20 @@ def finalize_purchase_plan(
     baseline_breaches = _breaches(baseline, limits) if not blockers else []
     prefix = "ai_" if amount_key.startswith("ai_") else ""
 
-    def trial(factor: float):
-        proposed = [dict(row) for row in source_rows]
-        for row in proposed:
-            old_amount, old_units = _number(row.get(amount_key)), _number(row.get(units_key))
-            valid = _candidate_evidence_eligible(row) and row.get("allocation_eligible") is not False
-            if budget is None:
-                continue
-            row[amount_key] = max(0.0, old_amount or 0.0) * factor if valid else 0.0
-            row[units_key] = max(0.0, old_units or 0.0) * factor if valid else 0.0
+    def verify(proposed: list[dict[str, Any]], *, preserve_quantities: bool = False):
+        incoming_units = [row.get(units_key) for row in proposed]
         proposed, costs = apply_execution_costs(
             proposed, budget, execution_costs,
             amount_key=amount_key, units_key=units_key,
             reserve_amount=contribution * reserve,
         )
+        if preserve_quantities and any(
+            Decimal(str(before or 0.0)) != Decimal(str(row.get(units_key) or 0.0))
+            for before, row in zip(incoming_units, proposed, strict=True)
+        ):
+            # Enumerated integers and incumbent fractional quantities are literal
+            # choices, not ceilings to shrink proportionally a second time.
+            return None
         additions = [(row, float(row.get(amount_key) or 0.0)) for row in proposed if float(row.get(amount_key) or 0.0) > 0.0]
         remaining = costs.get("cash_remaining")
         post, weighted, issues = _snapshot(
@@ -260,6 +267,17 @@ def finalize_purchase_plan(
         zero = not additions
         permitted = zero or (not blockers and not issues and _non_worsening(post, baseline, limits))
         return proposed, costs, post, weighted, issues, permitted
+
+    def trial(factor: float):
+        proposed = [dict(row) for row in source_rows]
+        for row in proposed:
+            old_amount, old_units = _number(row.get(amount_key)), _number(row.get(units_key))
+            valid = _candidate_evidence_eligible(row) and row.get("allocation_eligible") is not False
+            if budget is None:
+                continue
+            row[amount_key] = max(0.0, old_amount or 0.0) * factor if valid else 0.0
+            row[units_key] = max(0.0, old_units or 0.0) * factor if valid else 0.0
+        return verify(proposed)
 
     factor = 1.0
     selected = trial(0.0 if blockers else 1.0)
@@ -285,9 +303,80 @@ def finalize_purchase_plan(
                 selected, factor = candidate, probe
             else:
                 upper = probe
+    purchase_search = search_metadata(selected[1].get("principal", 0.0))
+    if budget is not None and (blockers or selected[1].get("status") != "confirmed"):
+        purchase_search["status"] = "blocked"
+    elif budget is not None:
+        search = prepare_whole_search(
+            source_rows, selected[0], contribution, contribution * reserve,
+            execution_costs, amount_key=amount_key, units_key=units_key,
+        )
+        purchase_search = search.metadata
+        purchase_search["risk_evaluation_limit"] = risk_evaluation_limit(source_rows, position_rows)
+        purchase_search["representation_pruned"] = 0
+        incumbent_rows = selected[0]
+        for state in search.states:
+            if state.debit > search.available:
+                continue
+            if state.score <= search.incumbent.score:
+                purchase_search["objective_pruned"] += 1
+                continue
+            if purchase_search["examined"] >= purchase_search["risk_evaluation_limit"]:
+                purchase_search.update(status="bounded", stopped_by_work_limit=True)
+                break
+            candidate = verify(
+                proposed_rows(search, state, source_rows, incumbent_rows,
+                              amount_key=amount_key, units_key=units_key),
+                preserve_quantities=True,
+            )
+            if candidate is None:
+                purchase_search["representation_pruned"] += 1
+                continue
+            purchase_search["examined"] += 1
+            if candidate[-1]:
+                # States are ordered by an exact cash/marked-principal objective.
+                # Every remaining state has an equal or worse objective.
+                selected = candidate
+                purchase_search.update(
+                    feasible=purchase_search["feasible"] + 1,
+                    selected_source="whole_unit_search", selected_principal=float(state.principal),
+                    improvement=True,
+                )
+                break
+            purchase_search["risk_rejected"] += 1
+            rejection_issues = [
+                *candidate[4],
+                *(f"portfolio_limit:{issue}" for issue in _breaches(candidate[2], limits)),
+            ] or ["existing_portfolio_breach_would_worsen"]
+            purchase_search["risk_rejection_issues"] = list(dict.fromkeys([
+                *purchase_search["risk_rejection_issues"], *rejection_issues,
+            ]))
+        if (purchase_search["full_domain_enumerated"]
+                and not purchase_search["stopped_by_work_limit"]
+                and not purchase_search["representation_pruned"]):
+            purchase_search["optimality_proven"] = True
+        if purchase_search["representation_pruned"]:
+            purchase_search.update(status="bounded", optimality_proven=False)
+        if selected[1].get("principal", 0.0) > 0:
+            purchase_search["no_positive_feasible"] = False
+        elif purchase_search["optimality_proven"]:
+            purchase_search["no_positive_feasible"] = True
     final_rows, costs, post, weighted, issues, permitted = selected
     if not permitted:
         raise AssertionError("Unverified purchase plan escaped the final portfolio gate")
+    affordable_but_unverified = (
+        costs.get("principal", 0.0) == 0.0 and purchase_search["risk_rejected"] > 0
+    )
+    if affordable_but_unverified:
+        # The proportional incumbent found no affordable purchase, but the
+        # integer search demonstrated affordable literal choices and rejected
+        # them at the portfolio gate. Keep those two explanations distinct.
+        costs["reasons"] = [reason for reason in costs.get("reasons", [])
+                            if reason != "execution_costs_no_affordable_purchase"]
+        for row in final_rows:
+            key = f"{prefix}execution_cost_blockers"
+            row[key] = [reason for reason in row.get(key, [])
+                        if reason != "execution_costs_no_affordable_purchase"]
     post_breaches = _breaches(post, limits) if not blockers and not issues else []
     reason_list = list(blockers)
     if factor < 1.0 and not blockers:
@@ -296,6 +385,9 @@ def finalize_purchase_plan(
         if not reason_list:
             reason_list.append("existing_portfolio_breach_would_worsen")
     reason_list.extend(costs.get("reasons") or [])
+    if affordable_but_unverified:
+        reason_list.extend(["portfolio_risk_no_verified_purchase",
+                            *purchase_search["risk_rejection_issues"]])
     total_principal = costs.get("principal", 0.0)
     if budget is None:
         status = "analysis_only"
@@ -343,7 +435,9 @@ def finalize_purchase_plan(
         "baseline_breaches": baseline_breaches,
         "post_breaches": post_breaches,
         "blockers": list(dict.fromkeys([*reason_list, *issues])),
-        "risk_scale": factor,
+        "risk_scale": None if purchase_search["improvement"] else factor,
+        "proportional_risk_scale": factor,
+        "purchase_search": purchase_search,
         "evidence": evidence,
         "assumptions": ["static_current_weights_over_historical_returns", "cash_has_zero_nominal_return", "existing_cash_excludes_purchase_budget", "purchase_budget_may_include_unspent_prior_contributions", "cash_reserve_fraction_applies_to_purchase_budget", "stress_scenarios_are_not_forecasts", "fund_lookthrough_is_not_complete"],
         "drawdown_limit_configured": max_drawdown_loss is not None,
@@ -354,6 +448,7 @@ def finalize_purchase_plan(
         "cash_reserve": costs.get("cash_remaining"),
         "deployment_fraction": total_principal / contribution if contribution > 0 else (None if budget is None else 0.0),
         "execution_costs": costs,
+        "purchase_search": purchase_search,
         "portfolio_risk": portfolio_risk,
         "final_purchase_contract": CONTRACT_VERSION,
     }

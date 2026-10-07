@@ -134,6 +134,7 @@ def environment(modules, monkeypatch):
 
     yahoo._chart = AsyncMock(side_effect=chart)
     manager = object.__new__(modules.runtime.InvestmentManager)
+    manager.hass = SimpleNamespace(async_add_executor_job=AsyncMock(side_effect=asyncio.to_thread))
     manager.yahoo = yahoo
     manager.stooq = SimpleNamespace(async_quote=AsyncMock(side_effect=modules.base.ProviderError("offline")))
     manager.frankfurter = SimpleNamespace(async_history=AsyncMock(), async_rate=AsyncMock())

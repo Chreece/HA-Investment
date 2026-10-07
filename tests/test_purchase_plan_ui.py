@@ -260,7 +260,7 @@ def test_all_28_languages_have_complete_translations_for_the_new_real_controls()
     assert len(pages)==28
     for page in pages:
         assert page["ownTranslations"]
-        assert len(page["translations"])==50
+        assert len(page["translations"])==54
         assert page["riskStatus"]==page["translations"]["riskStatusWithin"]
         assert page["riskScope"]==page["translations"]["riskScopeComplete"]
         assert page["translations"]["costsConfirmed"] in page["html"]
