@@ -54,6 +54,7 @@ RENDERER = NODE_RENDERER.replace(
     costStatus:root.querySelector('.indication-cost-summary')?.getAttribute('data-cost-status'),
     costText:text(root,'.indication-cost-summary'),
     missingPositions:text(root,'.indication-missing-positions'),
+    blockingSummary:text(root,'.indication-blocking-summary'),
     portfolioChanged:text(root,'.indication-portfolio-changed'),
     riskRows:[...root.querySelectorAll('.indication-portfolio-risk > .indication-risk-table-scroll tbody tr')].map(row=>[...row.querySelectorAll('th,td')].map(cell=>cell.textContent)),
     stressRows:[...root.querySelectorAll('.indication-stress-scenarios tr')].map(row=>({status:row.getAttribute('data-scenario-status'),text:row.textContent})),
@@ -219,7 +220,23 @@ def test_incomplete_existing_holding_evidence_names_the_holding_without_raw_erro
     assert page["riskStatus"] == "Assessment incomplete"
     assert all(row[1:]==["—","—"] for row in page["riskRows"])
     assert "MISSING.DE" in page["missingPositions"]
+    assert "MISSING.DE" in page["blockingSummary"]
+    assert "No allocation" in page["blockingSummary"] or "verified" in page["blockingSummary"].lower()
     assert "internal_trace_secret" not in page["html"]
+
+
+def test_nontradable_reference_series_do_not_inflate_excluded_investment_count():
+    data = result()
+    data["excluded_candidates"] = [
+        {"provider":"internal","provider_id":"USD/EUR","symbol":"USD/EUR","reason":"nontradable_reference"},
+        {"provider":"internal","provider_id":"GBP/EUR","symbol":"GBP/EUR","reason":"nontradable_reference"},
+        {"provider":"yahoo","provider_id":"BAD.DE","symbol":"BAD.DE","reason":"portfolio_fund_overlap"},
+    ]
+    page, = render({"result":data})
+    assert "Excluded candidates (1)" in page["html"]
+    assert "BAD.DE" in page["html"]
+    assert "USD/EUR" not in page["html"]
+    assert "GBP/EUR" not in page["html"]
 
 
 def test_existing_breach_is_not_labelled_as_fitting_portfolio_limits():

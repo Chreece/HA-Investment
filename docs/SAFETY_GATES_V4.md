@@ -8,7 +8,7 @@ non-worsening rule are retained.
 
 The final portfolio contract remains `complete-portfolio-confirmed-costs-v1`.
 The additional search contract is `bounded-whole-unit-reductions-v1`, and the
-panel asset revision is `0.4.0-r62`.
+panel asset revision is `0.4.0-r63`.
 
 ## 1. Recover feasible whole-share combinations after fees
 
@@ -134,7 +134,31 @@ identity approval cannot authorize another. Prior source failures remain
 blocking. Compatible duplicates retain both quantities; verified zero-owner
 holdings retain their existing exemption from positive-exposure history checks.
 
-## 4. Preserve evidence through the live finalization sequence
+## 4. Existing-portfolio identity coverage and actionable blocking output
+
+The complete-portfolio gate can only use positive holdings whose exact provider
+listing, share class and observed history are independently verifiable. The
+reviewed Yahoo/issuer listing catalog now also covers the six existing holdings
+that exposed the previous operational gap: `EUNK.DE`, `ISFA.AS`, `IWDA.AS`,
+`WEBG.DE`, `IU5C.DE` and `IEGE.AS`.
+
+Issuer/listing evidence was checked against the current iShares and Amundi
+product/listing pages on 2026-10-12. The catalog records exact ISIN, share-class
+currency, income treatment, trading currency, venue and economic sleeve. In
+particular, distributing share classes are now represented explicitly rather
+than being incorrectly rejected by the accumulating-only assertion logic.
+
+The panel now puts an all-cash blocker above the result summary. If existing
+holdings prevent a complete-portfolio verdict, it names those holdings and
+maps their evidence reason to the existing translated user-facing categories.
+Reference-only series such as `USD/EUR` remain available to the analysis but no
+longer inflate the user-facing count of excluded investments.
+
+The catalog additions are exact listing evidence, not substitutions between
+similar funds. A provider-symbol, exchange, currency, ISIN, share-class,
+income-treatment or structure conflict still abstains.
+
+## 5. Preserve evidence through the live finalization sequence
 
 The initial combination search runs through Home Assistant's executor. It
 operates on the per-analysis pure inputs; state changes are applied after the

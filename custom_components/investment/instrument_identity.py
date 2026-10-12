@@ -48,6 +48,7 @@ class _Listing:
     trading_currency: str = "EUR"
     exchange: str = "XETRA"
     listing_inception: str | None = None
+    income_treatment: str = "accumulating"
 
 
 # Issuer pages/factsheets checked on _REVIEWED_ON. Each source lists the exact
@@ -91,6 +92,48 @@ _ISSUER_LISTINGS = MappingProxyType({
         "VWCE.DE", "VWCE", "IE00BK5BQT80", "Vanguard Funds plc",
         "https://www.vanguard.co.uk/professional/product/etf/equity/9679/ftse-all-world-ucits-etf-usd-accumulating",
         "USD Accumulating", "USD", "2019-07-23", "broad_equity",
+    ),
+    # Existing-portfolio listings checked against current issuer listing tables
+    # on 2026-10-12.  These entries make the complete-portfolio gate usable for
+    # holdings already supported by the live Yahoo adapter; they are exact
+    # listings, not ticker aliases or substitutions between similar funds.
+    ("yahoo", "EUNK.DE"): _Listing(
+        "EUNK.DE", "EUNK", "IE00B4K48X80", "iShares III plc / BlackRock",
+        "https://www.ishares.com/de/privatanleger/de/produkte/251861",
+        "EUR Accumulating", "EUR", "2009-09-25", "broad_equity",
+        listing_inception="2009-10-20",
+    ),
+    ("yahoo", "ISFA.AS"): _Listing(
+        "ISFA.AS", "ISFA", "IE0005042456", "iShares plc / BlackRock",
+        "https://www.ishares.com/de/privatanleger/de/produkte/251795/ishares-core-ftse-100-ucits-etf",
+        "GBP Distributing", "GBP", "2000-04-27", "broad_equity",
+        trading_currency="EUR", exchange="EURONEXT AMSTERDAM", listing_inception="2002-02-20",
+        income_treatment="distributing",
+    ),
+    ("yahoo", "IWDA.AS"): _Listing(
+        "IWDA.AS", "IWDA", "IE00B4L5Y983", "iShares III plc / BlackRock",
+        "https://www.ishares.com/de/privatanleger/de/products/251882/SWDA",
+        "USD Accumulating", "USD", "2009-09-25", "broad_equity",
+        trading_currency="EUR", exchange="EURONEXT AMSTERDAM", listing_inception="2009-10-13",
+    ),
+    ("yahoo", "WEBG.DE"): _Listing(
+        "WEBG.DE", "WEBG", "IE0009HF1MK9", "Amundi ETF ICAV / Amundi Ireland Limited",
+        "https://www.amundi.es/inversor-profesional/product/view/IE0009HF1MK9",
+        "USD Distributing", "USD", "2024-02-21", "broad_equity",
+        income_treatment="distributing",
+    ),
+    ("yahoo", "IU5C.DE"): _Listing(
+        "IU5C.DE", "IU5C", "IE00BDDRF478", "iShares V plc / BlackRock",
+        "https://www.ishares.com/de/privatanleger/de/produkte/304659/ishares-s-p-500-communication-sector-ucits-etf?siteEntryPassthrough=true&switchLocale=y",
+        "USD Accumulating", "USD", "2018-09-17", "sector_equity",
+        listing_inception="2021-08-11",
+    ),
+    ("yahoo", "IEGE.AS"): _Listing(
+        "IEGE.AS", "IEGE", "IE00B3FH7618", "iShares III plc / BlackRock",
+        "https://www.ishares.com/uk/individual/en/products/251741/ishares-euro-government-bond-01yr-ucits-etf?locale=en_GB",
+        "EUR Distributing", "EUR", "2009-03-06", "government_bond",
+        trading_currency="EUR", exchange="EURONEXT AMSTERDAM", listing_inception="2009-05-06",
+        income_treatment="distributing",
     ),
 })
 
@@ -233,18 +276,30 @@ def _catalog_assertion_blockers(row: Mapping[str, Any], listing: _Listing) -> li
         aliases = {_words(listing.share_class)}
         if listing.share_class == "1C":
             aliases.add("EUR 1C")
+        elif listing.income_treatment == "distributing":
+            aliases |= {"DIST", "DISTRIBUTING", "DISTRIBUTION", "AUSSCHUTTEND", "AUSSCHUETTEND"}
+            aliases.add(_words(listing.share_class).replace("DISTRIBUTING", "DIST"))
         else:
-            aliases |= {"ACC", "ACCUMULATING", "ACCUMULATION"}
+            aliases |= {"ACC", "ACCUMULATING", "ACCUMULATION", "THESAURIEREND"}
             aliases.add(_words(listing.share_class).replace("ACCUMULATING", "ACC"))
         if share_class not in aliases:
             blockers.append("share_class_mismatch")
 
     # Names remain display text; only explicit contradictory assertions matter.
     name = _words(row.get("name"))
-    if re.search(r"\b(?:DIST|DISTRIBUTING|DISTRIBUTION|AUSSCHUTTEND)\b", name):
+    observed_income = None
+    if re.search(r"\b(?:DIST|DISTRIBUTING|DISTRIBUTION|AUSSCHUTTEND|AUSSCHUETTEND)\b", name):
+        observed_income = "distributing"
+    elif re.search(r"\b(?:ACC|ACCUMULATING|ACCUMULATION|THESAURIEREND)\b", name):
+        observed_income = "accumulating"
+    if observed_income is not None and observed_income != listing.income_treatment:
         blockers.append("income_treatment_mismatch")
     income = _words(row.get("income_treatment"))
-    if income and income not in {"ACC", "ACCUMULATING", "ACCUMULATION", "THESAURIEREND"}:
+    income_aliases = {
+        "accumulating": {"ACC", "ACCUMULATING", "ACCUMULATION", "THESAURIEREND"},
+        "distributing": {"DIST", "DISTRIBUTING", "DISTRIBUTION", "AUSSCHUTTEND", "AUSSCHUETTEND"},
+    }
+    if income and income not in income_aliases[listing.income_treatment]:
         blockers.append("income_treatment_mismatch")
     if row.get("currency_hedged") is not None and row.get("currency_hedged") is not listing.currency_hedged:
         blockers.append("currency_hedging_mismatch")
@@ -446,6 +501,9 @@ def resolve_instrument_identity(
             share_class_currency=listing.share_class_currency,
             share_class_inception=listing.share_class_inception,
             listing_inception=listing.listing_inception,
+            income_treatment=listing.income_treatment,
+            replication=listing.replication,
+            currency_hedged=listing.currency_hedged,
         )
         if listing.replication == "synthetic_swap":
             result["product_structure_flags"].append("swap_based_structure")
