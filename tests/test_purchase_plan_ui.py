@@ -213,6 +213,8 @@ def test_unknown_stress_exposures_do_not_render_as_zero_risk_and_rebound_shows_d
 
 def test_incomplete_existing_holding_evidence_names_the_holding_without_raw_errors():
     data = result(status="unknown")
+    data["allocation"].update(deployed=0, cash_reserve=100)
+    data["results"][0].update(suggested_amount=0, suggested_units=0, allocation_eligible=False)
     risk=data["allocation"]["portfolio_risk"]
     risk.update(before_purchases=None,baseline_with_contribution=None,post=None,evidence={},
                 existing_position_issues=[{"symbol":"MISSING.DE","reasons":["internal_trace_secret"]}])
