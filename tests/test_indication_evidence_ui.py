@@ -235,7 +235,7 @@ def test_unknown_exclusion_reasons_are_not_presented_as_portfolio_overlap():
     ]
     page, = render({"result":analysis([], excluded=exclusions)})
     reasons = {row["symbol"]:row["reason"] for row in page["excluded"]}
-    assert reasons["REFERENCE"] == "Nontradable reference"
+    assert "REFERENCE" not in reasons  # analysis reference, not an excluded investment
     assert reasons["IDENTITY"] == "Product identity could not be verified"
     assert reasons["QUALITY"] == "Market data could not be verified"
     assert reasons["OVERLAP"] == "Excluded because of portfolio overlap"
@@ -284,7 +284,7 @@ def test_verified_identity_values_and_exclusion_labels_are_html_escaped():
     row = candidate()
     row["instrument_identity"]["share_class"] = '<img data-injected="1" src=x onerror=alert(1)>'
     page, = render({"result":analysis([row], excluded=[{
-        "symbol":"<script>alert(1)</script>", "reason":"nontradable_reference",
+        "symbol":"<script>alert(1)</script>", "reason":"another_explicit_rule",
     }])})
     assert page["injectedNodes"] == 0
     assert "&lt;img" in page["html"]

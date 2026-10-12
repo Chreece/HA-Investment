@@ -115,6 +115,54 @@ def test_compatible_held_duplicates_reuse_one_fund_feed_and_count_both_quantitie
     assert len(held_requests) == 3
 
 
+@pytest.mark.parametrize("symbol,name,exchange,sleeve,income", [
+    ("EUNK.DE", "iShares Core MSCI Europe UCITS ETF EUR (Acc)", "XETRA", "broad_equity", "accumulating"),
+    ("ISFA.AS", "iShares Core FTSE 100 UCITS ETF GBP (Dist)", "EURONEXT AMSTERDAM", "broad_equity", "distributing"),
+    ("IWDA.AS", "iShares Core MSCI World UCITS ETF USD (Acc)", "EURONEXT AMSTERDAM", "broad_equity", "accumulating"),
+    ("WEBG.DE", "Amundi Prime All Country World UCITS ETF Dist", "XETRA", "broad_equity", "distributing"),
+    ("IU5C.DE", "iShares S&P 500 Communication Sector UCITS ETF USD (Acc)", "XETRA", "sector_equity", "accumulating"),
+    ("IEGE.AS", "iShares € Govt Bond 0-1yr UCITS ETF EUR (Dist)", "EURONEXT AMSTERDAM", "government_bond", "distributing"),
+])
+def test_real_existing_portfolio_etf_listings_are_verified(environment, monkeypatch, symbol, name, exchange, sleeve, income):
+    original = environment.manager.yahoo._chart.side_effect
+
+    async def chart(provider_id, range_, interval, **kwargs):
+        payload = await original(provider_id, range_, interval, **kwargs)
+        if provider_id == symbol:
+            payload["meta"].update(
+                symbol=symbol, instrumentType="ETF", currency="EUR",
+                exchangeName="AMS" if exchange == "EURONEXT AMSTERDAM" else "GER",
+                fullExchangeName="Euronext Amsterdam" if exchange == "EURONEXT AMSTERDAM" else "Deutsche Boerse AG",
+            )
+        return payload
+
+    environment.manager.yahoo._chart.side_effect = chart
+    held = {
+        **environment.candidate, "id": "real-held-listing", "provider_id": symbol,
+        "symbol": symbol, "name": name, "category": "etf", "currency": "EUR",
+        "exchange": exchange, "quantity": 1., "value": 100.,
+        "income_treatment": income,
+    }
+    _portfolio_with(environment, [held])
+    checked = []
+    original_plan = environment.modules.core.finalize_purchase_plan
+
+    def checked_plan(*args, **kwargs):
+        checked.extend(kwargs.get("existing_positions", []))
+        return original_plan(*args, **kwargs)
+
+    monkeypatch.setattr(environment.modules.core, "finalize_purchase_plan", checked_plan)
+    result = _indication(environment, existing_cash=1000.)
+    positions = [position for position in checked if position.get("symbol") == symbol]
+    assert positions
+    position = positions[0]
+    assert position["instrument_identity_eligible"] is True
+    assert position["data_quality_eligible"] is True
+    assert position["economic_sleeve"] == sleeve
+    assert position["instrument_identity"]["income_treatment"] == income
+    assert result["allocation"]["portfolio_risk"]["existing_position_issues"] == []
+
+
 def test_rechecking_held_identity_cannot_promote_stale_shared_source(environment):
     _portfolio_with(environment, [{**environment.candidate, "quantity": 1., "value": 100.}])
     environment.quote["meta"]["regularMarketTime"] = NOW - 10 * DAY
