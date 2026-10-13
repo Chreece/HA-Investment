@@ -80,6 +80,21 @@ class InvestmentStore:
         if "remote_privacy" not in user:
             user["remote_privacy"] = False
             changed = True
+        if "privacy_controls_enabled" not in user:
+            # Existing users who actively used either privacy mode retain it.
+            # Everyone else, including new/default users, starts with privacy
+            # controls disabled so privacy is fully opt-in.
+            user["privacy_controls_enabled"] = bool(
+                user.get("incognito", False) or user.get("remote_privacy", False)
+            )
+            changed = True
+        if not user.get("privacy_controls_enabled", False):
+            if user.get("incognito", False):
+                user["incognito"] = False
+                changed = True
+            if user.get("remote_privacy", False):
+                user["remote_privacy"] = False
+                changed = True
         try:
             reveal_seconds = int(user.get("incognito_reveal_seconds", DEFAULT_INCOGNITO_REVEAL_SECONDS))
         except (TypeError, ValueError):
@@ -252,6 +267,7 @@ class InvestmentStore:
             {
                 "base_currency": DEFAULT_BASE_CURRENCY,
                 "language": DEFAULT_UI_LANGUAGE,
+                "privacy_controls_enabled": False,
                 "incognito": False,
                 "remote_privacy": False,
                 "incognito_reveal_seconds": DEFAULT_INCOGNITO_REVEAL_SECONDS,
@@ -294,6 +310,7 @@ class InvestmentStore:
         *,
         base_currency: str | None = None,
         language: str | None = None,
+        privacy_controls_enabled: bool | None = None,
         incognito: bool | None = None,
         remote_privacy: bool | None = None,
         incognito_reveal_seconds: int | None = None,
@@ -312,9 +329,14 @@ class InvestmentStore:
                 user["base_currency"] = base_currency.upper()
             if language is not None:
                 user["language"] = language.lower()
-            if incognito is not None:
+            if privacy_controls_enabled is not None:
+                user["privacy_controls_enabled"] = bool(privacy_controls_enabled)
+                if not user["privacy_controls_enabled"]:
+                    user["incognito"] = False
+                    user["remote_privacy"] = False
+            if incognito is not None and user.get("privacy_controls_enabled", False):
                 user["incognito"] = bool(incognito)
-            if remote_privacy is not None:
+            if remote_privacy is not None and user.get("privacy_controls_enabled", False):
                 user["remote_privacy"] = bool(remote_privacy)
             if incognito_reveal_seconds is not None:
                 user["incognito_reveal_seconds"] = int(incognito_reveal_seconds)
