@@ -4,7 +4,7 @@ from __future__ import annotations
 DOMAIN = "investment"
 NAME = "HA Investment"
 VERSION = "0.4.0"
-PANEL_ASSET_REVISION = "0.4.0-r71"
+PANEL_ASSET_REVISION = "0.4.0-r72"
 PANEL_URL = "investment"
 PANEL_NAME = f"investment-panel-{PANEL_ASSET_REVISION.rsplit('-', 1)[-1]}"
 PANEL_TITLE = "Investments"
@@ -59,8 +59,8 @@ DEFAULT_INDICATION_PREFERENCES = {
     "risk_tolerance": "medium",
     "horizon": "medium",
     "strategy": "adaptive",
-    "overlap_policy": "penalize",
-    "overlap_threshold_pct": 20.0,
+    "overlap_policy": "allow",
+    "overlap_threshold_pct": 0.0,
     "diversification": "medium",
     "max_candidate_pct": None,
     "min_confidence_pct": 45.0,
@@ -68,7 +68,7 @@ DEFAULT_INDICATION_PREFERENCES = {
     "whole_units_only": False,
     "whole_unit_categories": [],
     "portfolio_context": "use",
-    "existing_instruments": "allow",
+    "existing_instruments": "exclude",
     "execution_costs": None,
     "existing_cash": 0.0,
     "max_drawdown_pct": None,
