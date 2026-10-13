@@ -121,13 +121,14 @@ class InvestmentManager(PortfolioRuntimeManager):
         result["complete_portfolio_enforcement"] = False
 
         # The wrapped runtime persisted its internal neutral arguments. Restore
-        # the visible exact-owned filter so reloads retain the user's choice,
-        # while overlap and existing cash remain unable to re-enable old-portfolio
-        # influence through stale preferences.
+        # the visible exact-owned filter and original source so reloads retain
+        # the user's choices, while overlap and existing cash remain unable to
+        # re-enable old-portfolio influence through stale preferences.
         current_user = await self.store.async_user(user_id)
         stored_preferences = dict(current_user.get("indication_preferences") or {})
         stored_preferences.update(
             {
+                "scope": resolved_scope,
                 "portfolio_context": policy.display_context,
                 "existing_instruments": policy.display_existing_policy,
                 "overlap_policy": policy.core_overlap_policy,
