@@ -260,7 +260,7 @@ class YahooProvider(MarketProvider):
                     candidate_symbols.append(symbol)
 
         collect(initial_quotes)
-        if token != root or not candidate_symbols:
+        if token != root:
             try:
                 collect(await self._search_quotes(root))
             except ProviderError:
