@@ -2327,12 +2327,18 @@ class InvestmentPanel extends HTMLElement {
 
   captureViewState(){
     const indication=this.shadowRoot?.querySelector(".indication-modal");
-    return {indicationScroll:indication?indication.scrollTop:null};
+    const settings=this.shadowRoot?.querySelector(".settings-modal");
+    return {
+      indicationScroll:indication?indication.scrollTop:null,
+      settingsScroll:settings?settings.scrollTop:null,
+    };
   }
   restoreViewState(state){
     if(!state)return;
     const indication=this.shadowRoot?.querySelector(".indication-modal");
     if(indication&&state.indicationScroll!==null)indication.scrollTop=state.indicationScroll;
+    const settings=this.shadowRoot?.querySelector(".settings-modal");
+    if(settings&&state.settingsScroll!==null)settings.scrollTop=state.settingsScroll;
   }
 
   captureFocus(){
