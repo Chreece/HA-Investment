@@ -151,3 +151,11 @@ def test_panel_starts_bootstrap_after_custom_element_is_connected():
     assert "first paint waits for the 61-second poll timer" in panel
     assert "if(this._haConnected&&!this._portfolio&&!this._loadingBootstrap)" in panel
     assert "if(!this._haConnected||!this.isConnected||this._loadingBootstrap)return;" in panel
+
+
+def test_indications_websocket_accepts_privacy_control_preferences():
+    websocket = (COMPONENT / "websocket.py").read_text()
+    assert '"privacy_controls_enabled"' in websocket
+    assert '"remote_privacy"' in websocket
+    marker = 'preference_keys = {"base_currency", "language", "privacy_controls_enabled", "incognito", "remote_privacy"'
+    assert marker in websocket
