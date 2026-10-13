@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 2026.10.13.1
+
+- Fixed wide-screen Home Assistant layouts so the Investments panel uses the full available content width instead of being capped at 1450 px.
+- Kept the existing tablet and mobile breakpoints unchanged while making desktop padding responsive to viewport width.
+- Added regression coverage to prevent the fixed desktop width cap from returning.
+
 ## 2026.10.13
 
 - Added market-agnostic ticker alias recovery across Yahoo-supported markets. Broker/source forms such as `SPYL.EU`, `SHOP.CA`, `VOD.UK`, `AAPL.US` and `7203.JP` are resolved to independently verified quoteable provider symbols in the requested trading currency.
