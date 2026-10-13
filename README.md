@@ -1,13 +1,33 @@
-<!-- ko-fi-support -->
 <p align="center">
-  <a href="https://ko-fi.com/chreece">
-    <img src="https://raw.githubusercontent.com/Chreece/pir2ha/main/.github/ko-fi-banner.svg" alt="Support Chreece on Ko-fi" width="600">
+  <img src="assets/banner.svg" alt="HA Investment — portfolio tracking for Home Assistant" width="100%">
+</p>
+
+<h1 align="center">HA Investment</h1>
+
+<p align="center">
+  <strong>A private, multi-user investment portfolio for Home Assistant.</strong><br>
+  Search global markets, record exact transactions and fees, track providers, analyze allocation and review historical performance from one responsive Home Assistant panel.
+</p>
+
+<p align="center">
+  <a href="https://github.com/Chreece/HA-Investment/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/Chreece/HA-Investment?display_name=tag&sort=semver"></a>
+  <a href="https://github.com/Chreece/HA-Investment/actions/workflows/validate.yml"><img alt="Validation" src="https://img.shields.io/github/actions/workflow/status/Chreece/HA-Investment/validate.yml?branch=master&label=validation"></a>
+  <a href="https://github.com/Chreece/HA-Investment"><img alt="HACS" src="https://img.shields.io/badge/HACS-custom_repository-41BDF5"></a>
+  <img alt="Home Assistant 2026.5+" src="https://img.shields.io/badge/Home%20Assistant-2026.5%2B-18BCF2">
+  <img alt="License" src="https://img.shields.io/github/license/Chreece/HA-Investment">
+</p>
+
+<p align="center">
+  <a href="https://my.home-assistant.io/redirect/hacs_repository/?owner=Chreece&repository=HA-Investment&category=integration">
+    <img src="https://my.home-assistant.io/badges/hacs_repository.svg" alt="Open this repository in HACS">
   </a>
 </p>
 
-# HA Investment
-
-A **free, multi-user investment portfolio for Home Assistant**. Search and add stocks, ETFs, funds, crypto, indices, commodities/futures and FX instruments, then track current value, today's move, cost-basis profit/loss and historical trends directly inside Home Assistant.
+<p align="center">
+  <a href="https://ko-fi.com/chreece">
+    <img src="https://raw.githubusercontent.com/Chreece/pir2ha/main/.github/ko-fi-banner.svg" alt="Support Chreece on Ko-fi" width="520">
+  </a>
+</p>
 
 > **No paid API subscription is required.** The default provider stack uses public/no-key endpoints and caches responses to reduce load. Market-data availability and delay depend on the source and exchange.
 
@@ -37,6 +57,72 @@ A **free, multi-user investment portfolio for Home Assistant**. Search and add s
 - **28 languages** included in setup translations; the investment panel includes localized UI strings for major languages including **Greek**.
 - No globally visible portfolio sensor entities by default, avoiding accidental cross-user financial-data exposure.
 
+## Feature gallery
+
+The examples below mirror the public panel's core workflows and use representative data.
+
+### Portfolio dashboard
+
+Portfolio value, invested capital, realized/unrealized P/L, allocation and holdings are visible in one overview.
+
+![Portfolio dashboard](assets/ui-dashboard.svg)
+
+### Global asset search
+
+Search stocks, ETFs, funds and other supported instruments across global markets while keeping results scoped to the selected trading currency. Broker-style aliases remain visible while the integration keeps the independently verified market-data symbol underneath.
+
+![Global asset search](assets/ui-search.svg)
+
+### Transactions and FIFO lot accounting
+
+Every BUY and SELL remains an individual ledger event. FIFO lot consumption drives realized P/L, while remaining lots drive unrealized P/L and custody balances.
+
+![Transactions and FIFO ledger](assets/ui-transactions.svg)
+
+### Costs, cash principal and asset-denominated fees
+
+Quoted price, cash principal, platform/bank/exchange/tax costs and asset-denominated fees are kept separate so broker receipts can be represented without double-counting.
+
+![Costs and fees](assets/ui-costs.svg)
+
+### Holding providers and locations
+
+One holding can be split across multiple brokers, exchanges, wallets, banks or apps while remaining one portfolio asset.
+
+![Holding providers](assets/ui-providers.svg)
+
+### Portfolio analytics
+
+Compare allocation by asset category, custody provider and trading currency.
+
+![Portfolio analytics](assets/ui-analytics.svg)
+
+### Historical trends
+
+Review portfolio/category/holding history with 1D, 1W, 1M, 3M, 1Y and 5Y periods where supported. Holding views can switch between value, price, units, realized P/L and unrealized P/L.
+
+![Historical trends](assets/ui-history.svg)
+
+### Responsive mobile layout
+
+The custom panel uses Home Assistant theme variables and adapts search, cards, history and transaction entry for narrow screens.
+
+![Responsive mobile view](assets/ui-mobile.svg)
+
+## HACS compatibility
+
+HA Investment follows the current HACS integration repository contract:
+
+- one integration under `custom_components/investment/`
+- root-level `hacs.json`
+- valid Home Assistant `manifest.json` with version, documentation, issue tracker and code owner
+- integration brand assets under `custom_components/investment/brand/`
+- published GitHub releases
+- automated **HACS validation** and **Hassfest** on every push and pull request
+- public repository with description, issues and searchable repository topics
+
+The repository is continuously checked by the same HACS Action used for custom-integration validation.
+
 ## Free provider stack
 
 | Source | Used for | Key / subscription | Notes |
@@ -52,11 +138,14 @@ The integration never requires a commercial market-data key. "Latest quote" is u
 
 ### HACS custom repository
 
-1. Add this repository to HACS as an **Integration** custom repository.
-2. Install **HA Investment**.
-3. Restart Home Assistant.
-4. Go to **Settings → Devices & services → Add integration → HA Investment**.
-5. Open **Investments** in the sidebar.
+Use the button below, or add `https://github.com/Chreece/HA-Investment` manually as an **Integration** custom repository in HACS.
+
+[![Open your Home Assistant instance and add this repository to HACS](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=Chreece&repository=HA-Investment&category=integration)
+
+1. Install **HA Investment** from HACS.
+2. Restart Home Assistant.
+3. Go to **Settings → Devices & services → Add integration → HA Investment**.
+4. Open **Investments** from the Home Assistant sidebar.
 
 ### Manual
 
