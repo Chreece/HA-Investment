@@ -14,6 +14,7 @@ class SearchResult:
     category: str
     currency: str | None = None
     exchange: str | None = None
+    search_alias: str | None = None
 
     def as_dict(self) -> dict[str, Any]:
         return asdict(self)
