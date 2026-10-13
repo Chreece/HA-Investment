@@ -77,6 +77,7 @@ def test_runtime_never_forwards_existing_portfolio_to_purchase_gate():
     assert '"portfolio_context": policy.core_portfolio_context' in manager
     assert '"overlap_policy": policy.core_overlap_policy' in manager
     assert '"existing_cash": policy.core_existing_cash' in manager
+    assert '"scope": resolved_scope' in manager
     assert 'policy.risk_scope' in manager
     assert 'policy.complete_portfolio_enforcement' in manager
     assert 'portfolio_risk["scope"] = policy.risk_scope' in manager
