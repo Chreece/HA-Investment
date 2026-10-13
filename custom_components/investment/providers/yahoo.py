@@ -75,6 +75,29 @@ _DISCOVERY_FALLBACK = {
     ),
 }
 
+
+# Some brokers expose a market-neutral ".EU" suffix that is not a Yahoo
+# exchange code.  Do not translate it to one venue blindly.  When an EUR
+# ticker search is otherwise unresolved, probe a tiny set of common EUR
+# venues and accept a candidate only when Yahoo's chart metadata confirms the
+# exact symbol and EUR trading currency.
+_DIRECT_EUR_LISTING_SUFFIXES = (".DE", ".AS")
+
+
+def _direct_eur_listing_root(query: str) -> str | None:
+    """Return a safe ticker root for bounded direct EUR listing discovery."""
+    token = str(query or "").strip().upper()
+    if token.endswith(".EU"):
+        token = token[:-3]
+    elif "." in token:
+        return None
+    if not 2 <= len(token) <= 12:
+        return None
+    compact = token.replace("-", "")
+    if not compact or not compact.isalnum():
+        return None
+    return token
+
 _PERIOD = {
     "1d": ("1d", "5m", 24 * 3600),
     "7d": ("1mo", "30m", 7 * 24 * 3600),
@@ -147,6 +170,47 @@ class YahooProvider(MarketProvider):
         except ProviderError:
             return None
 
+    async def _direct_eur_listings(self, query: str, base_currency: str) -> list[SearchResult]:
+        """Probe verified EUR listings for a plain ticker or broker-style .EU alias."""
+        if str(base_currency or "").upper().strip() != "EUR":
+            return []
+        root = _direct_eur_listing_root(query)
+        if root is None:
+            return []
+
+        async def resolve(suffix: str) -> SearchResult | None:
+            symbol = f"{root}{suffix}"
+            try:
+                result = await self._chart(symbol, "1d", "1d")
+            except ProviderError:
+                return None
+            meta = result.get("meta") or {}
+            resolved = str(meta.get("symbol") or "").strip().upper()
+            currency = str(meta.get("currency") or "").strip()
+            qtype = str(meta.get("instrumentType") or "").upper().strip()
+            category = _QUOTE_TYPE_CATEGORY.get(qtype, "other")
+            if resolved != symbol.upper():
+                return None
+            if not quote_currency_matches(currency, base_currency):
+                return None
+            if category not in {"stock", "etf", "fund"}:
+                return None
+            name = meta.get("longName") or meta.get("shortName") or symbol
+            exchange = meta.get("fullExchangeName") or meta.get("exchangeName")
+            self._currency_cache[symbol] = currency
+            return SearchResult(
+                provider=self.provider_id,
+                provider_id=symbol,
+                symbol=symbol,
+                name=str(name),
+                category=category,
+                currency=currency,
+                exchange=exchange,
+            )
+
+        found = await asyncio.gather(*(resolve(suffix) for suffix in _DIRECT_EUR_LISTING_SUFFIXES))
+        return [item for item in found if item is not None]
+
     async def async_search(self, query: str, base_currency: str) -> Sequence[SearchResult]:
         direct_crypto: SearchResult | None = None
         crypto_base = crypto_symbol_from_query(query)
@@ -183,11 +247,14 @@ class YahooProvider(MarketProvider):
                 enableFuzzyQuery="true",
             )
         except ProviderError:
-            # A verified direct crypto pair is sufficient on its own. Generic
+            # Verified direct candidates are sufficient on their own. Generic
             # Yahoo discovery is useful for breadth, but a transient/rate-limited
-            # search endpoint must not hide a pair we already proved exists.
+            # search endpoint must not hide a pair/listing we already proved exists.
             if direct_crypto is not None:
                 return [direct_crypto]
+            direct_eur = await self._direct_eur_listings(query, base_currency)
+            if direct_eur:
+                return direct_eur
             raise
         candidates: list[tuple[dict, str, str, str, str]] = []
         for item in data.get("quotes", []):
@@ -262,6 +329,27 @@ class YahooProvider(MarketProvider):
                     )
                 ],
             ]
+        else:
+            root = _direct_eur_listing_root(query)
+            broker_eu_alias = str(query or "").strip().upper().endswith(".EU")
+            exact_root_found = bool(root) and any(
+                (
+                    str(item.provider_id or "").upper() == root
+                    or str(item.provider_id or "").upper().startswith(f"{root}.")
+                )
+                for item in results
+            )
+            if root and (broker_eu_alias or not exact_root_found):
+                direct_eur = await self._direct_eur_listings(query, base_currency)
+                if direct_eur:
+                    direct_ids = {item.provider_id.upper() for item in direct_eur}
+                    results = [
+                        *direct_eur,
+                        *[
+                            item for item in results
+                            if str(item.provider_id or "").upper() not in direct_ids
+                        ],
+                    ]
         return results
 
     async def _predefined_screener(self, screener_id: str, *, count: int = 12) -> Sequence[SearchResult]:
