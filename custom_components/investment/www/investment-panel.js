@@ -751,8 +751,9 @@ class InvestmentPanel extends HTMLElement {
     this._storedIncognito=!!portfolio?.incognito;
     this._incognitoRevealSeconds=clamp(Math.trunc(Number(portfolio?.incognito_reveal_seconds??5)||0),0,300);
     this._connectionLocal=portfolio?.connection_local===true;
-    this._remotePrivacyDefault=portfolio?.connection_local===false;
-    if(this._connectionLocal)this._incognitoSessionOverride=null;
+    this._remotePrivacyEnabled=portfolio?.remote_privacy===true;
+    this._remotePrivacyDefault=!this._connectionLocal&&this._remotePrivacyEnabled;
+    if(this._connectionLocal||!this._remotePrivacyEnabled)this._incognitoSessionOverride=null;
     const remotePrivacy=this._remotePrivacyDefault&&this._incognitoSessionOverride!==false;
     this._incognito=this._storedIncognito||remotePrivacy||this._incognitoSessionOverride===true;
     if(!this._searchCurrency)this._searchCurrency=String(portfolio?.base_currency||"EUR").toUpperCase();
@@ -1661,7 +1662,7 @@ class InvestmentPanel extends HTMLElement {
     this.clearIncognitoReveal();
     const next=!this._incognito, previous=this._incognito, previousStored=this._storedIncognito, previousOverride=this._incognitoSessionOverride;
     if(this._remotePrivacyDefault){
-      // Remote privacy is a session-safe default, not a permanent preference.
+      // Automatic remote privacy is an explicit user preference; the top-bar button can override it for this session.
       // A remote user may reveal values for this browser session; if a globally
       // persisted incognito preference was also on, disabling clears that too.
       this._incognitoSessionOverride=next;this._incognito=next;
@@ -2349,7 +2350,7 @@ class InvestmentPanel extends HTMLElement {
       <div class="page ${this._incognito?"incognito":""}">
         <header class="topbar">
           <div><div class="eyebrow">HA Investment</div><h1>${esc(this.t("title"))}</h1></div>
-          <div class="header-actions"><span class="free">${esc(this.t("freeData"))}</span><button class="icon-btn ${this._incognito?"active":""}" id="incognito" title="${esc(this._remotePrivacyDefault&&this._incognito&&!this._storedIncognito?this.t("remotePrivacyDefaultHint"):(this._incognito?this.t("incognitoDisable"):this.t("incognitoEnable")))}" aria-pressed="${this._incognito?"true":"false"}">◉</button><button class="icon-btn" id="refresh" title="${esc(this.t("refresh"))}" aria-label="${esc(this.t("refresh"))}"><span class="refresh-glyph">↻</span></button><button class="icon-btn" id="settings" title="${esc(this.t("settings"))}">⚙</button></div>
+          <div class="header-actions"><span class="free">${esc(this.t("freeData"))}</span><button class="icon-btn ${this._incognito?"active":""}" id="incognito" title="${esc(this._remotePrivacyDefault&&this._incognito&&!this._storedIncognito?this.t("remotePrivacyHint"):(this._incognito?this.t("incognitoDisable"):this.t("incognitoEnable")))}" aria-pressed="${this._incognito?"true":"false"}">◉</button><button class="icon-btn" id="refresh" title="${esc(this.t("refresh"))}" aria-label="${esc(this.t("refresh"))}"><span class="refresh-glyph">↻</span></button><button class="icon-btn" id="settings" title="${esc(this.t("settings"))}">⚙</button></div>
         </header>
         ${this._error?`<div class="banner error-banner"><span>${esc(this._error)}</span><button id="dismiss-error">×</button></div>`:""}
         ${this._loading&&!this._portfolio?`<div class="loading-card">${esc(this._haConnected?this.t("loading"):this.t("portfolioWaitingConnection"))}</div>`:this._loadFailed&&!this._portfolio?`<div class="loading-card load-failed"><strong>${esc(this.t("portfolioLoadFailed"))}</strong><small>${esc(this._error||this.t("portfolioLoadTimeout"))}</small><button id="portfolio-retry" type="button">${esc(this.t("retryPortfolio"))}</button></div>`:`
