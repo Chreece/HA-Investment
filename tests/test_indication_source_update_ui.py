@@ -68,3 +68,9 @@ def test_source_update_status_distinguishes_failure_pending_available_and_curren
 def test_updater_state_changes_only_rebuild_open_settings():
     assert "sourceUpdateSignature(value)" in PANEL
     assert "(sourceUpdateChanged&&this._settings)" in PANEL
+
+
+def test_source_update_refresh_preserves_settings_scroll_position():
+    assert 'const settings=this.shadowRoot?.querySelector(".settings-modal")' in PANEL
+    assert "settingsScroll:settings?settings.scrollTop:null" in PANEL
+    assert "if(settings&&state.settingsScroll!==null)settings.scrollTop=state.settingsScroll" in PANEL
