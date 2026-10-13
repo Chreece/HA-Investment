@@ -872,6 +872,7 @@ class InvestmentManager:
         base_currency: str | None = None,
         language: str | None = None,
         incognito: bool | None = None,
+        remote_privacy: bool | None = None,
         incognito_reveal_seconds: int | None = None,
         exposed_entities: list[str] | None = None,
         holding_providers: list[dict[str, str]] | None = None,
@@ -881,6 +882,7 @@ class InvestmentManager:
             base_currency is None
             and language is None
             and incognito is None
+            and remote_privacy is None
             and incognito_reveal_seconds is None
             and exposed_entities is None
             and holding_providers is None
@@ -946,6 +948,7 @@ class InvestmentManager:
             base_currency=base_currency,
             language=language,
             incognito=incognito,
+            remote_privacy=remote_privacy,
             incognito_reveal_seconds=normalized_reveal_seconds,
             exposed_entities=normalized_exposed,
             holding_providers=normalized_holding_providers,
@@ -1106,6 +1109,7 @@ class InvestmentManager:
             "base_currency": base,
             "language": str(user.get("language") or DEFAULT_UI_LANGUAGE),
             "incognito": bool(user.get("incognito", False)),
+            "remote_privacy": bool(user.get("remote_privacy", False)),
             "incognito_reveal_seconds": int(
                 user.get(
                     "incognito_reveal_seconds",
@@ -1943,6 +1947,7 @@ class InvestmentManager:
             "base_currency": base,
             "language": str(user.get("language") or DEFAULT_UI_LANGUAGE),
             "incognito": bool(user.get("incognito", False)),
+            "remote_privacy": bool(user.get("remote_privacy", False)),
             "incognito_reveal_seconds": int(user.get("incognito_reveal_seconds", DEFAULT_INCOGNITO_REVEAL_SECONDS)),
             "exposed_entities": list(user.get("exposed_entities") or []),
             "holding_providers": deepcopy(user.get("holding_providers") or []),
