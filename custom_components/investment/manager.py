@@ -995,6 +995,7 @@ class InvestmentManager:
         *,
         base_currency: str | None = None,
         language: str | None = None,
+        privacy_controls_enabled: bool | None = None,
         incognito: bool | None = None,
         remote_privacy: bool | None = None,
         incognito_reveal_seconds: int | None = None,
@@ -1085,6 +1086,7 @@ class InvestmentManager:
             user_id,
             base_currency=base_currency,
             language=language,
+            privacy_controls_enabled=privacy_controls_enabled,
             incognito=incognito,
             remote_privacy=remote_privacy,
             incognito_reveal_seconds=normalized_reveal_seconds,
@@ -1248,6 +1250,7 @@ class InvestmentManager:
         return {
             "base_currency": base,
             "language": str(user.get("language") or DEFAULT_UI_LANGUAGE),
+            "privacy_controls_enabled": bool(user.get("privacy_controls_enabled", False)),
             "incognito": bool(user.get("incognito", False)),
             "remote_privacy": bool(user.get("remote_privacy", False)),
             "incognito_reveal_seconds": int(
@@ -2138,6 +2141,7 @@ class InvestmentManager:
         result = {
             "base_currency": base,
             "language": str(user.get("language") or DEFAULT_UI_LANGUAGE),
+            "privacy_controls_enabled": bool(user.get("privacy_controls_enabled", False)),
             "incognito": bool(user.get("incognito", False)),
             "remote_privacy": bool(user.get("remote_privacy", False)),
             "incognito_reveal_seconds": int(user.get("incognito_reveal_seconds", DEFAULT_INCOGNITO_REVEAL_SECONDS)),
