@@ -1,5 +1,7 @@
 from importlib.util import module_from_spec, spec_from_file_location
 from pathlib import Path
+import shutil
+import subprocess
 import sys
 
 import pytest
@@ -88,6 +90,20 @@ def test_panel_exposes_one_owned_filter_and_hides_old_portfolio_constraints():
     assert 'payload.overlap_policy="allow"' in panel
     assert 'payload.existing_cash=0' in panel
     assert 'portfolio_context:scope==="portfolio"?"use":(filter?"use":"ignore")' in panel
+
+
+def test_contribution_panel_module_is_valid_javascript():
+    node = shutil.which("node")
+    assert node is not None
+    source = (ROOT / "www" / "investment-panel-contribution.js").read_text(encoding="utf-8")
+    result = subprocess.run(
+        [node, "--input-type=module", "--check"],
+        input=source,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
 
 
 def test_integration_loads_contribution_manager_and_wrapper():
