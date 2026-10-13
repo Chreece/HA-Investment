@@ -98,17 +98,20 @@ def test_standalone_market_score_restores_context_penalties():
     assert fields["portfolio_context_adjustment"] == -11.2
 
 
-def test_runtime_wires_both_context_controls():
+def test_runtime_wires_owned_filter_without_complete_portfolio_risk():
     manager_text = (ROOT / "runtime_manager.py").read_text(encoding="utf-8")
+    contribution_text = (ROOT / "contribution_manager.py").read_text(encoding="utf-8")
     websocket_text = (ROOT / "runtime_websocket.py").read_text(encoding="utf-8")
-    frontend_text = (ROOT / "www" / "investment-panel-runtime.js").read_text(encoding="utf-8")
+    frontend_text = (ROOT / "www" / "investment-panel-contribution.js").read_text(encoding="utf-8")
     init_text = (ROOT / "__init__.py").read_text(encoding="utf-8")
-    for text in (manager_text, websocket_text, frontend_text):
+    for text in (manager_text, contribution_text, websocket_text, frontend_text):
         assert "portfolio_context" in text
         assert "existing_instruments" in text
-    assert "runtime_manager" in init_text
+    assert "contribution_manager" in init_text
     assert "runtime_websocket" in init_text
-    assert "investment-panel-runtime.js" in init_text
+    assert "investment-panel-contribution.js" in init_text
+    assert '"portfolio_context": policy.core_portfolio_context' in contribution_text
+    assert '"existing_cash": policy.core_existing_cash' in contribution_text
 
 
 def test_context_score_postprocessing_preserves_validated_market_score():
