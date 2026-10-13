@@ -2943,11 +2943,14 @@ class InvestmentPanel extends HTMLElement {
     if(!this._search.trim())return "";
     if(this._searching && !this._results.length)return `<div class="results"><div class="result-empty">${esc(this.t("loading"))}</div></div>`;
     if(!this._results.length && !this._searching)return `<div class="results"><div class="result-empty">${esc(this.t("noResults"))}</div></div>`;
-    return `<div class="results">${this._results.map((r,i)=>`<div class="result-row" data-result-buy="${i}" role="button" tabindex="0" aria-label="${esc(this.t("buy"))} ${esc(r.name)}">
+    return `<div class="results">${this._results.map((r,i)=>{
+      const shownSymbol=r.search_alias||r.symbol;
+      const providerSymbol=r.search_alias&&r.search_alias!==r.symbol?` · ${esc(r.symbol)}`:"";
+      return `<div class="result-row" data-result-buy="${i}" role="button" tabindex="0" aria-label="${esc(this.t("buy"))} ${esc(r.name)}">
       <div class="asset-icon ${esc(r.category)}">${ICONS[r.category]||"•"}</div>
-      <div class="result-main"><div class="result-title"><strong>${esc(r.symbol)}</strong><em>${esc(this.normalizeSearchCurrency(r.currency)||this._portfolio?.base_currency||"")}</em></div><span>${esc(r.name)}</span><small>${esc(this.catName(r.category))} · ${esc(this.providerLabel(r.provider))}${r.exchange?` · ${esc(r.exchange)}`:""}</small></div>
+      <div class="result-main"><div class="result-title"><strong>${esc(shownSymbol)}</strong><em>${esc(this.normalizeSearchCurrency(r.currency)||this._portfolio?.base_currency||"")}</em></div><span>${esc(r.name)}</span><small>${esc(this.catName(r.category))} · ${esc(this.providerLabel(r.provider))}${r.exchange?` · ${esc(r.exchange)}`:""}${providerSymbol}</small></div>
       <button class="add-btn" data-add="${i}" type="button">＋ ${esc(this.t("buy"))}</button>
-    </div>`).join("")}</div>`;
+    </div>`}).join("")}</div>`;
   }
   cardLedgerSeries(scope,id,period="1m"){
     const events=this.trendScopeLedgerEvents({scope,id,period});
