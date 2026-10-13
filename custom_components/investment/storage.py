@@ -77,6 +77,9 @@ class InvestmentStore:
         if "incognito" not in user:
             user["incognito"] = False
             changed = True
+        if "remote_privacy" not in user:
+            user["remote_privacy"] = False
+            changed = True
         try:
             reveal_seconds = int(user.get("incognito_reveal_seconds", DEFAULT_INCOGNITO_REVEAL_SECONDS))
         except (TypeError, ValueError):
@@ -250,6 +253,7 @@ class InvestmentStore:
                 "base_currency": DEFAULT_BASE_CURRENCY,
                 "language": DEFAULT_UI_LANGUAGE,
                 "incognito": False,
+                "remote_privacy": False,
                 "incognito_reveal_seconds": DEFAULT_INCOGNITO_REVEAL_SECONDS,
                 "developer_indicator_unlocked": False,
                 "indication_disclaimer_version": 0,
@@ -291,6 +295,7 @@ class InvestmentStore:
         base_currency: str | None = None,
         language: str | None = None,
         incognito: bool | None = None,
+        remote_privacy: bool | None = None,
         incognito_reveal_seconds: int | None = None,
         developer_indicator_unlocked: bool | None = None,
         indication_preferences: dict[str, Any] | None = None,
@@ -309,6 +314,8 @@ class InvestmentStore:
                 user["language"] = language.lower()
             if incognito is not None:
                 user["incognito"] = bool(incognito)
+            if remote_privacy is not None:
+                user["remote_privacy"] = bool(remote_privacy)
             if incognito_reveal_seconds is not None:
                 user["incognito_reveal_seconds"] = int(incognito_reveal_seconds)
             if developer_indicator_unlocked is not None:
