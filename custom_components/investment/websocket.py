@@ -398,7 +398,7 @@ async def ws_remove(hass: HomeAssistant, connection, msg: dict[str, Any]) -> Non
 @websocket_api.async_response
 async def ws_preferences(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
     try:
-        preference_keys = {"base_currency", "language", "incognito", "incognito_reveal_seconds", "developer_indicator_unlocked", "indication_preferences", "exposed_entities", "holding_providers", "indication_disclaimer_version", "indication_disclaimer_region", "indication_disclaimer_language"}
+        preference_keys = {"base_currency", "language", "privacy_controls_enabled", "incognito", "remote_privacy", "incognito_reveal_seconds", "developer_indicator_unlocked", "indication_preferences", "exposed_entities", "holding_providers", "indication_disclaimer_version", "indication_disclaimer_region", "indication_disclaimer_language"}
         if not any(key in msg for key in preference_keys):
             raise ValueError("At least one preference is required")
         user = await _manager(hass).async_set_preferences(
