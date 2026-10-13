@@ -101,7 +101,8 @@ async def ws_get_portfolio(hass: HomeAssistant, connection, msg: dict[str, Any])
             )
         )
         # Connection locality is session-specific and must never be cached inside
-        # the portfolio object itself. It drives the frontend's privacy-safe remote default.
+        # the portfolio object itself. The frontend only uses it when the user has
+        # explicitly enabled automatic privacy for remote connections.
         payload = dict(result)
         payload["connection_local"] = _connection_is_local(connection)
         connection.send_result(msg["id"], payload)
@@ -380,6 +381,7 @@ async def ws_remove(hass: HomeAssistant, connection, msg: dict[str, Any]) -> Non
         vol.Optional("base_currency"): vol.All(str, vol.Length(min=3, max=3)),
         vol.Optional("language"): vol.In((DEFAULT_UI_LANGUAGE, *SUPPORTED_UI_LANGUAGES)),
         vol.Optional("incognito"): bool,
+        vol.Optional("remote_privacy"): bool,
         vol.Optional("incognito_reveal_seconds"): vol.All(
             vol.Coerce(int), vol.Range(min=0, max=MAX_INCOGNITO_REVEAL_SECONDS)
         ),
@@ -398,7 +400,7 @@ async def ws_remove(hass: HomeAssistant, connection, msg: dict[str, Any]) -> Non
 async def ws_preferences(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
     try:
         preference_keys = {
-            "base_currency", "language", "incognito",
+            "base_currency", "language", "incognito", "remote_privacy",
             "incognito_reveal_seconds", "exposed_entities", "holding_providers",
         }
         if not any(key in msg for key in preference_keys):
@@ -411,6 +413,7 @@ async def ws_preferences(hass: HomeAssistant, connection, msg: dict[str, Any]) -
             base_currency=msg.get("base_currency"),
             language=msg.get("language"),
             incognito=msg.get("incognito"),
+            remote_privacy=msg.get("remote_privacy"),
             incognito_reveal_seconds=msg.get("incognito_reveal_seconds"),
             exposed_entities=msg.get("exposed_entities"),
             holding_providers=msg.get("holding_providers"),
@@ -421,6 +424,7 @@ async def ws_preferences(hass: HomeAssistant, connection, msg: dict[str, Any]) -
                 "base_currency": user["base_currency"],
                 "language": user.get("language", DEFAULT_UI_LANGUAGE),
                 "incognito": bool(user.get("incognito", False)),
+                "remote_privacy": bool(user.get("remote_privacy", False)),
                 "incognito_reveal_seconds": int(
                     user.get("incognito_reveal_seconds", DEFAULT_INCOGNITO_REVEAL_SECONDS)
                 ),
