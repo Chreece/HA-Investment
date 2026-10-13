@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026.10.13.2
+
+- Made privacy controls fully optional. They are disabled by default for new/default users, while existing users who already used privacy mode retain their preference safely.
+- Fixed the initial Investments panel load getting stuck on `Loading…` until the 61-second background poll or a manual refresh. Portfolio bootstrap now starts as soon as the custom panel is actually connected.
+- Added duplicate-bootstrap protection so reconnect/upgrade lifecycle events cannot start overlapping first-load requests.
+- Unified normal and forced portfolio refresh handling so `privacy_controls_enabled` remains authoritative on every refresh path.
+- Improved desktop readability by raising the smallest 8–10 px metadata, history, analytics, provider and settings text to an 11 px minimum.
+- Added regression coverage for first-load lifecycle, optional privacy behavior, responsive width, and readable minimum text sizes.
+
 ## 0.2.6
 
 - Fixed transaction-form data loss during the 61-second background portfolio refresh. An open Add Investment dialog is no longer rebuilt by automatic refreshes.
