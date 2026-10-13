@@ -93,23 +93,35 @@ def test_panel_exposes_one_owned_filter_and_hides_old_portfolio_constraints():
     assert 'portfolio_context:scope==="portfolio"?"use":(filter?"use":"ignore")' in panel
 
 
-def test_contribution_panel_module_is_valid_javascript():
+def test_hidden_legacy_cash_is_neutralized_before_client_validation_and_send():
+    panel = (ROOT / "www" / "investment-panel-indications.js").read_text(encoding="utf-8")
+    assert "const planningPayload = proto.indicationPlanningPayload" in panel
+    assert "existing_cash: 0" in panel
+    assert "stale saved value" in panel
+
+
+def test_contribution_panel_modules_are_valid_javascript():
     node = shutil.which("node")
     assert node is not None
-    source = (ROOT / "www" / "investment-panel-contribution.js").read_text(encoding="utf-8")
-    result = subprocess.run(
-        [node, "--input-type=module", "--check"],
-        input=source,
-        text=True,
-        capture_output=True,
-        check=False,
-    )
-    assert result.returncode == 0, result.stderr
+    for filename in (
+        "investment-panel-contribution.js",
+        "investment-panel-indications.js",
+    ):
+        source = (ROOT / "www" / filename).read_text(encoding="utf-8")
+        result = subprocess.run(
+            [node, "--input-type=module", "--check"],
+            input=source,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        assert result.returncode == 0, f"{filename}: {result.stderr}"
 
 
-def test_integration_loads_contribution_manager_and_wrapper():
+def test_integration_loads_contribution_manager_and_final_wrapper():
     init = (ROOT / "__init__.py").read_text(encoding="utf-8")
     assert "from .contribution_manager import InvestmentManager" in init
+    assert "investment-panel-indications.js" in init
     assert "investment-panel-contribution.js" in init
 
 
