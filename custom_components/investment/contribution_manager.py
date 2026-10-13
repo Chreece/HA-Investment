@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from .affordable_lots import recover_affordable_minimum_lots
 from .indication_policy import resolve_indication_portfolio_policy
 from .runtime_manager import InvestmentManager as PortfolioRuntimeManager
 
@@ -84,6 +85,11 @@ class InvestmentManager(PortfolioRuntimeManager):
             }
         )
         result = await super().async_indication(user_id, **core_kwargs)
+        result = recover_affordable_minimum_lots(
+            result,
+            budget=kwargs.get("amount"),
+            risk_tolerance=str(kwargs.get("risk_tolerance") or "medium"),
+        )
 
         if resolved_scope == "portfolio":
             result["scope"] = "portfolio"
