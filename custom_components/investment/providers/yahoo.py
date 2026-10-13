@@ -177,6 +177,8 @@ class YahooProvider(MarketProvider):
         root = _direct_eur_listing_root(query)
         if root is None:
             return []
+        token = str(query or "").strip().upper()
+        search_alias = token if token.endswith(".EU") else None
 
         async def resolve(suffix: str) -> SearchResult | None:
             symbol = f"{root}{suffix}"
@@ -206,6 +208,7 @@ class YahooProvider(MarketProvider):
                 category=category,
                 currency=currency,
                 exchange=exchange,
+                search_alias=search_alias,
             )
 
         found = await asyncio.gather(*(resolve(suffix) for suffix in _DIRECT_EUR_LISTING_SUFFIXES))
