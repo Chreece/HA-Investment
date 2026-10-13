@@ -11,7 +11,7 @@ from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.typing import ConfigType
 
 from .const import DOMAIN, PANEL_ASSET_REVISION, PANEL_ICON, PANEL_NAME, PANEL_URL, STATIC_URL, VERSION, sidebar_title
-from .runtime_manager import InvestmentManager
+from .contribution_manager import InvestmentManager
 from .runtime_websocket import async_register_commands
 
 _LOGGER = logging.getLogger(__name__)
@@ -37,8 +37,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     await hass.http.async_register_static_paths(
         [StaticPathConfig(STATIC_URL, str(www_path), False)]
     )
+    contribution_asset = www_path / "investment-panel-contribution.js"
     runtime_asset = www_path / "investment-panel-runtime.js"
-    runtime_revision = runtime_asset.stat().st_mtime_ns if runtime_asset.exists() else 0
+    runtime_revision = max(
+        contribution_asset.stat().st_mtime_ns if contribution_asset.exists() else 0,
+        runtime_asset.stat().st_mtime_ns if runtime_asset.exists() else 0,
+    )
 
     if frontend.async_panel_exists(hass, PANEL_URL):
         frontend.async_remove_panel(hass, PANEL_URL)
@@ -48,7 +52,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         frontend_url_path=PANEL_URL,
         webcomponent_name=PANEL_NAME,
         module_url=(
-            f"{STATIC_URL}/investment-panel-runtime.js"
+            f"{STATIC_URL}/investment-panel-contribution.js"
             f"?asset_revision={PANEL_ASSET_REVISION}&runtime_revision={runtime_revision}"
         ),
         sidebar_title=sidebar_title(hass.config.language),
