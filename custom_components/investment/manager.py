@@ -996,6 +996,7 @@ class InvestmentManager:
         base_currency: str | None = None,
         language: str | None = None,
         incognito: bool | None = None,
+        remote_privacy: bool | None = None,
         incognito_reveal_seconds: int | None = None,
         developer_indicator_unlocked: bool | None = None,
         indication_preferences: dict[str, Any] | None = None,
@@ -1085,6 +1086,7 @@ class InvestmentManager:
             base_currency=base_currency,
             language=language,
             incognito=incognito,
+            remote_privacy=remote_privacy,
             incognito_reveal_seconds=normalized_reveal_seconds,
             developer_indicator_unlocked=developer_indicator_unlocked,
             indication_preferences=normalized_indication,
@@ -1247,6 +1249,7 @@ class InvestmentManager:
             "base_currency": base,
             "language": str(user.get("language") or DEFAULT_UI_LANGUAGE),
             "incognito": bool(user.get("incognito", False)),
+            "remote_privacy": bool(user.get("remote_privacy", False)),
             "incognito_reveal_seconds": int(
                 user.get(
                     "incognito_reveal_seconds",
@@ -2136,6 +2139,7 @@ class InvestmentManager:
             "base_currency": base,
             "language": str(user.get("language") or DEFAULT_UI_LANGUAGE),
             "incognito": bool(user.get("incognito", False)),
+            "remote_privacy": bool(user.get("remote_privacy", False)),
             "incognito_reveal_seconds": int(user.get("incognito_reveal_seconds", DEFAULT_INCOGNITO_REVEAL_SECONDS)),
             "developer_indicator_unlocked": bool(user.get("developer_indicator_unlocked", False)),
             "indication_disclaimer_version": int(user.get("indication_disclaimer_version") or 0),
