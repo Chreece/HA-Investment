@@ -32,8 +32,9 @@ def test_portfolio_payload_carries_remote_privacy_preference():
 
 def test_remote_connections_only_auto_hide_when_user_enabled_it():
     panel = (COMPONENT / "www" / "investment-panel.js").read_text()
-    assert "_remotePrivacyEnabled=portfolio?.remote_privacy===true" in panel
-    assert "_remotePrivacyDefault=!this._connectionLocal&&this._remotePrivacyEnabled" in panel
+    assert "_privacyControlsEnabled=portfolio?.privacy_controls_enabled===true" in panel
+    assert "_remotePrivacyEnabled=this._privacyControlsEnabled&&portfolio?.remote_privacy===true" in panel
+    assert "_remotePrivacyDefault=this._privacyControlsEnabled&&!this._connectionLocal&&this._remotePrivacyEnabled" in panel
     assert "_remotePrivacyDefault=portfolio?.connection_local===false" not in panel
 
 

@@ -137,3 +137,17 @@ def test_panel_hides_quick_privacy_button_until_feature_is_enabled():
     assert "this._privacyControlsEnabled?" in panel
     assert 'id="incognito"' in panel
     assert "privacy_controls_enabled:next" in panel
+
+
+def test_panel_reuses_opt_in_privacy_logic_on_every_portfolio_refresh():
+    panel = (COMPONENT / "www" / "investment-panel.js").read_text()
+    assert "this.applyPortfolioPayload(portfolio);" in panel
+    legacy = "this._storedIncognito=!!portfolio?.incognito;"
+    assert panel.count(legacy) == 0
+
+
+def test_panel_starts_bootstrap_after_custom_element_is_connected():
+    panel = (COMPONENT / "www" / "investment-panel.js").read_text()
+    assert "first paint waits for the 61-second poll timer" in panel
+    assert "if(this._haConnected&&!this._portfolio&&!this._loadingBootstrap)" in panel
+    assert "if(!this._haConnected||!this.isConnected||this._loadingBootstrap)return;" in panel
