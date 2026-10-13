@@ -13,3 +13,10 @@ def test_panel_page_is_not_capped_to_fixed_desktop_width():
 def test_panel_keeps_mobile_padding_breakpoint():
     text = PANEL.read_text()
     assert "@media(max-width:900px){.page{padding:16px 12px 56px}" in text
+
+
+def test_small_desktop_metadata_is_readable():
+    text = PANEL.read_text()
+    assert "font-size:8px" not in text
+    assert "font-size:9px" not in text
+    assert ".hero-meta{margin-top:7px;color:var(--secondary-text-color);font-size:11px}" in text
