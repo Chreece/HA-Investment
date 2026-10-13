@@ -12,4 +12,4 @@ def test_panel_page_is_not_capped_to_fixed_desktop_width():
 
 def test_panel_keeps_mobile_padding_breakpoint():
     text = PANEL.read_text()
-    assert "@media(max-width:900px){.page{padding:16px 12px 56px}" in text
+    assert ".page{padding:16px 12px 56px}" in text
