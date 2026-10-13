@@ -1008,7 +1008,7 @@ class InvestmentManager:
         indication_disclaimer_language: str | None = None,
     ) -> dict[str, Any]:
         """Update private per-user display, indication, automation and legal preferences."""
-        if base_currency is None and language is None and incognito is None and incognito_reveal_seconds is None and developer_indicator_unlocked is None and indication_preferences is None and exposed_entities is None and holding_providers is None and indication_disclaimer_version is None and indication_disclaimer_region is None and indication_disclaimer_language is None:
+        if base_currency is None and language is None and privacy_controls_enabled is None and incognito is None and remote_privacy is None and incognito_reveal_seconds is None and developer_indicator_unlocked is None and indication_preferences is None and exposed_entities is None and holding_providers is None and indication_disclaimer_version is None and indication_disclaimer_region is None and indication_disclaimer_language is None:
             raise ValueError("At least one preference is required")
         if base_currency is not None:
             if len(base_currency) != 3 or not base_currency.isalpha():
