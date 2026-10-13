@@ -28,26 +28,85 @@ _QUOTE_TYPE_CATEGORY = {
 
 
 
-# Some brokers expose a market-neutral ".EU" suffix that is not a Yahoo
-# exchange code. Do not translate it to one venue blindly. When an EUR ticker
-# search is otherwise unresolved, probe a tiny set of common EUR venues and
-# accept a candidate only when Yahoo confirms the exact symbol and EUR currency.
-_DIRECT_EUR_LISTING_SUFFIXES = (".DE", ".AS")
+# Primary Yahoo equity/fund listing suffixes keyed by quote currency.
+# The suffixes come from Yahoo's published market-coverage table. Search first
+# asks Yahoo for the ticker root; this registry is only a bounded recovery path
+# when fuzzy search does not surface a matching listing. Every candidate is
+# still chart-verified for exact symbol, currency and instrument type.
+_YAHOO_PRIMARY_LISTING_SUFFIXES_BY_CURRENCY = {
+    "AED": (".AE",),
+    "ARS": (".BA",),
+    "AUD": (".AX", ".XA"),
+    "BRL": (".SA",),
+    "CAD": (".TO", ".V", ".CN", ".NE"),
+    "CHF": (".SW",),
+    "CLP": (".SN",),
+    "CNY": (".SS", ".SZ"),
+    "COP": (".CL",),
+    "CZK": (".PR",),
+    "DKK": (".CO",),
+    "EGP": (".CA",),
+    "EUR": (
+        ".DE", ".AS", ".PA", ".MI", ".MC", ".BR", ".VI", ".HE",
+        ".AT", ".IR", ".LS", ".F", ".TI", ".TL", ".RG", ".VS",
+    ),
+    "GBP": (".L", ".IL", ".AQ", ".XC"),
+    "HKD": (".HK",),
+    "HUF": (".BD",),
+    "IDR": (".JK",),
+    "ILS": (".TA",),
+    "INR": (".NS", ".BO"),
+    "ISK": (".IC",),
+    "JPY": (".T",),
+    "KRW": (".KS", ".KQ"),
+    "KWD": (".KW",),
+    "MXN": (".MX",),
+    "MYR": (".KL",),
+    "NOK": (".OL",),
+    "NZD": (".NZ",),
+    "PHP": (".PS",),
+    "PLN": (".WA",),
+    "QAR": (".QA",),
+    "RON": (".RO",),
+    "SAR": (".SAU",),
+    "SEK": (".ST",),
+    "SGD": (".SI",),
+    "THB": (".BK",),
+    "TRY": (".IS",),
+    "TWD": (".TW", ".TWO"),
+    "USD": ("",),
+    "VND": (".VN",),
+    "ZAR": (".JO",),
+}
+
+_SUPPORTED_DIRECT_LISTING_CATEGORIES = {"stock", "etf", "fund"}
+_DIRECT_LISTING_RECOVERY_TIMEOUT_SECONDS = 6.0
 
 
-def _direct_eur_listing_root(query: str) -> str | None:
-    """Return a safe ticker root for bounded direct EUR listing discovery."""
+def _ticker_query_parts(query: str) -> tuple[str, str] | None:
+    """Return normalized token/root for a ticker-like search query."""
     token = str(query or "").strip().upper()
-    if token.endswith(".EU"):
-        token = token[:-3]
-    elif "." in token:
+    if not token or token.count(".") > 1:
         return None
-    if not 2 <= len(token) <= 12:
+    if "." in token:
+        root, suffix = token.rsplit(".", 1)
+        if not suffix or len(suffix) > 5 or not suffix.isalnum():
+            return None
+    else:
+        root = token
+    if not 1 <= len(root) <= 15:
         return None
-    compact = token.replace("-", "")
+    compact = root.replace("-", "")
     if not compact or not compact.isalnum():
         return None
-    return token
+    return token, root
+
+
+def _symbol_matches_ticker_root(symbol: str, root: str) -> bool:
+    upper = str(symbol or "").strip().upper()
+    wanted = str(root or "").strip().upper()
+    return bool(wanted) and (upper == wanted or upper.startswith(f"{wanted}."))
+
 
 _PERIOD = {
     "1d": ("1d", "5m", 24 * 3600),
@@ -118,46 +177,145 @@ class YahooProvider(MarketProvider):
         except ProviderError:
             return None
 
-    async def _direct_eur_listings(self, query: str, base_currency: str) -> list[SearchResult]:
-        """Probe verified EUR listings for a plain ticker or broker-style .EU alias."""
-        if str(base_currency or "").upper().strip() != "EUR":
-            return []
-        root = _direct_eur_listing_root(query)
-        if root is None:
-            return []
+    async def _search_quotes(self, query: str) -> list[dict]:
+        data = await self._get_json(
+            "https://query1.finance.yahoo.com/v1/finance/search",
+            q=query,
+            quotesCount=40,
+            newsCount=0,
+            listsCount=0,
+            enableFuzzyQuery="true",
+        )
+        return list(data.get("quotes", []))
 
-        async def resolve(suffix: str) -> SearchResult | None:
-            symbol = f"{root}{suffix}"
+    async def _verified_listing(
+        self,
+        symbol: str,
+        base_currency: str,
+        *,
+        search_alias: str | None = None,
+    ) -> SearchResult | None:
+        """Return a listing only after Yahoo chart metadata proves its identity."""
+        try:
+            result = await self._chart(symbol, "1d", "1d")
+        except ProviderError:
+            return None
+        meta = result.get("meta") or {}
+        resolved = str(meta.get("symbol") or "").strip().upper()
+        currency = str(meta.get("currency") or "").strip()
+        qtype = str(meta.get("instrumentType") or "").upper().strip()
+        category = _QUOTE_TYPE_CATEGORY.get(qtype, "other")
+        if resolved != str(symbol or "").strip().upper():
+            return None
+        if not quote_currency_matches(currency, base_currency):
+            return None
+        if category not in _SUPPORTED_DIRECT_LISTING_CATEGORIES:
+            return None
+        name = meta.get("longName") or meta.get("shortName") or symbol
+        exchange = meta.get("fullExchangeName") or meta.get("exchangeName")
+        self._currency_cache[symbol] = currency
+        return SearchResult(
+            provider=self.provider_id,
+            provider_id=symbol,
+            symbol=symbol,
+            name=str(name),
+            category=category,
+            currency=currency,
+            exchange=exchange,
+            search_alias=search_alias,
+        )
+
+    async def _recover_ticker_listings(
+        self,
+        query: str,
+        base_currency: str,
+        initial_quotes: Sequence[dict] = (),
+    ) -> list[SearchResult]:
+        """Recover a quoteable listing without assuming the user's market suffix."""
+        parts = _ticker_query_parts(query)
+        if parts is None:
+            return []
+        token, root = parts
+
+        # A real Yahoo ticker always wins. This keeps explicit symbols such as
+        # VOD.L or SHOP.TO canonical instead of treating their suffix as an alias.
+        direct = await self._verified_listing(token, base_currency)
+        if direct is not None:
+            return [direct]
+
+        alias = token if token != root else None
+        candidate_symbols: list[str] = []
+
+        def collect(rows: Sequence[dict]) -> None:
+            for item in rows:
+                symbol = str(item.get("symbol") or "").strip().upper()
+                qtype = str(item.get("quoteType") or "").upper().strip()
+                category = _QUOTE_TYPE_CATEGORY.get(qtype, "other")
+                if (
+                    symbol
+                    and category in _SUPPORTED_DIRECT_LISTING_CATEGORIES
+                    and _symbol_matches_ticker_root(symbol, root)
+                    and symbol not in candidate_symbols
+                ):
+                    candidate_symbols.append(symbol)
+
+        collect(initial_quotes)
+        if token != root:
             try:
-                result = await self._chart(symbol, "1d", "1d")
+                collect(await self._search_quotes(root))
             except ProviderError:
-                return None
-            meta = result.get("meta") or {}
-            resolved = str(meta.get("symbol") or "").strip().upper()
-            currency = str(meta.get("currency") or "").strip()
-            qtype = str(meta.get("instrumentType") or "").upper().strip()
-            category = _QUOTE_TYPE_CATEGORY.get(qtype, "other")
-            if resolved != symbol.upper():
-                return None
-            if not quote_currency_matches(currency, base_currency):
-                return None
-            if category not in {"stock", "etf", "fund"}:
-                return None
-            name = meta.get("longName") or meta.get("shortName") or symbol
-            exchange = meta.get("fullExchangeName") or meta.get("exchangeName")
-            self._currency_cache[symbol] = currency
-            return SearchResult(
-                provider=self.provider_id,
-                provider_id=symbol,
-                symbol=symbol,
-                name=str(name),
-                category=category,
-                currency=currency,
-                exchange=exchange,
-            )
+                pass
 
-        found = await asyncio.gather(*(resolve(suffix) for suffix in _DIRECT_EUR_LISTING_SUFFIXES))
-        return [item for item in found if item is not None]
+        # Verify provider-discovered candidates before any suffix probing.
+        verified: list[SearchResult] = []
+        for symbol in candidate_symbols:
+            item = await self._verified_listing(symbol, base_currency, search_alias=alias)
+            if item is not None:
+                verified.append(item)
+        if verified:
+            return verified
+
+        # Yahoo fuzzy search can omit valid listings (the SPYL case is one
+        # example). Probe only the documented primary suffixes for the requested
+        # quote currency, with a strict time bound and exact metadata checks.
+        suffixes = _YAHOO_PRIMARY_LISTING_SUFFIXES_BY_CURRENCY.get(
+            str(base_currency or "").upper().strip(), ()
+        )
+        symbols = []
+        for suffix in suffixes:
+            symbol = f"{root}{suffix}"
+            if symbol not in symbols and symbol != token:
+                symbols.append(symbol)
+        if not symbols:
+            return []
+
+        sem = asyncio.Semaphore(6)
+
+        async def verify(symbol: str) -> SearchResult | None:
+            async with sem:
+                return await self._verified_listing(
+                    symbol, base_currency, search_alias=alias
+                )
+
+        tasks = [asyncio.create_task(verify(symbol)) for symbol in symbols]
+        done, pending = await asyncio.wait(
+            tasks, timeout=_DIRECT_LISTING_RECOVERY_TIMEOUT_SECONDS
+        )
+        for task in pending:
+            task.cancel()
+        recovered: list[SearchResult] = []
+        for task in done:
+            if task.cancelled():
+                continue
+            try:
+                item = task.result()
+            except Exception:
+                continue
+            if item is not None:
+                recovered.append(item)
+        order = {symbol: index for index, symbol in enumerate(symbols)}
+        recovered.sort(key=lambda item: order.get(item.provider_id, len(order)))
+        return recovered
 
     async def async_search(self, query: str, base_currency: str) -> Sequence[SearchResult]:
         direct_crypto: SearchResult | None = None
@@ -186,23 +344,17 @@ class YahooProvider(MarketProvider):
                 pass
 
         try:
-            data = await self._get_json(
-                "https://query1.finance.yahoo.com/v1/finance/search",
-                q=query,
-                quotesCount=40,
-                newsCount=0,
-                listsCount=0,
-                enableFuzzyQuery="true",
-            )
+            quotes = await self._search_quotes(query)
+            data = {"quotes": quotes}
         except ProviderError:
             # Verified direct candidates are sufficient on their own. Generic
             # Yahoo discovery is useful for breadth, but a transient/rate-limited
-            # search endpoint must not hide a pair/listing we already proved exists.
+            # search endpoint must not hide an independently verified listing.
             if direct_crypto is not None:
                 return [direct_crypto]
-            direct_eur = await self._direct_eur_listings(query, base_currency)
-            if direct_eur:
-                return direct_eur
+            recovered = await self._recover_ticker_listings(query, base_currency)
+            if recovered:
+                return recovered
             raise
         candidates: list[tuple[dict, str, str, str, str]] = []
         for item in data.get("quotes", []):
@@ -278,26 +430,34 @@ class YahooProvider(MarketProvider):
                 ],
             ]
         else:
-            root = _direct_eur_listing_root(query)
-            broker_eu_alias = str(query or "").strip().upper().endswith(".EU")
-            exact_root_found = bool(root) and any(
-                (
-                    str(item.provider_id or "").upper() == root
-                    or str(item.provider_id or "").upper().startswith(f"{root}.")
+            parts = _ticker_query_parts(query)
+            if parts is not None:
+                token, root = parts
+                exact_query_found = any(
+                    str(item.provider_id or "").upper() == token for item in results
                 )
-                for item in results
-            )
-            if root and (broker_eu_alias or not exact_root_found):
-                direct_eur = await self._direct_eur_listings(query, base_currency)
-                if direct_eur:
-                    direct_ids = {item.provider_id.upper() for item in direct_eur}
-                    results = [
-                        *direct_eur,
-                        *[
-                            item for item in results
-                            if str(item.provider_id or "").upper() not in direct_ids
-                        ],
-                    ]
+                related_root_found = any(
+                    _symbol_matches_ticker_root(item.provider_id, root)
+                    for item in results
+                )
+                if (token != root and not exact_query_found) or (
+                    token == root and not related_root_found
+                ):
+                    recovered = await self._recover_ticker_listings(
+                        query, base_currency, data.get("quotes", [])
+                    )
+                    if recovered:
+                        recovered_ids = {
+                            item.provider_id.upper() for item in recovered
+                        }
+                        results = [
+                            *recovered,
+                            *[
+                                item for item in results
+                                if str(item.provider_id or "").upper()
+                                not in recovered_ids
+                            ],
+                        ]
         return results
 
 
