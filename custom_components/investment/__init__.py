@@ -37,9 +37,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     await hass.http.async_register_static_paths(
         [StaticPathConfig(STATIC_URL, str(www_path), False)]
     )
+    indications_asset = www_path / "investment-panel-indications.js"
     contribution_asset = www_path / "investment-panel-contribution.js"
     runtime_asset = www_path / "investment-panel-runtime.js"
     runtime_revision = max(
+        indications_asset.stat().st_mtime_ns if indications_asset.exists() else 0,
         contribution_asset.stat().st_mtime_ns if contribution_asset.exists() else 0,
         runtime_asset.stat().st_mtime_ns if runtime_asset.exists() else 0,
     )
@@ -52,7 +54,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         frontend_url_path=PANEL_URL,
         webcomponent_name=PANEL_NAME,
         module_url=(
-            f"{STATIC_URL}/investment-panel-contribution.js"
+            f"{STATIC_URL}/investment-panel-indications.js"
             f"?asset_revision={PANEL_ASSET_REVISION}&runtime_revision={runtime_revision}"
         ),
         sidebar_title=sidebar_title(hass.config.language),
