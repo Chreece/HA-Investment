@@ -19,8 +19,13 @@ def test_per_user_indication_preferences_include_all_runtime_criteria():
             prefs = ast.literal_eval(node.value)
             break
     assert prefs is not None
+    # Indications uses the portfolio only as an exact owned-instrument filter.
+    # Existing holdings never enter the new-contribution risk calculation.
     assert prefs["portfolio_context"] == "use"
-    assert prefs["existing_instruments"] == "allow"
+    assert prefs["existing_instruments"] == "exclude"
+    assert prefs["overlap_policy"] == "allow"
+    assert prefs["overlap_threshold_pct"] == 0.0
+    assert prefs["existing_cash"] == 0.0
     for key in (
         "scope", "mode", "amount", "category", "ai_task_entity_id",
         "risk_tolerance", "horizon", "strategy", "overlap_policy",
