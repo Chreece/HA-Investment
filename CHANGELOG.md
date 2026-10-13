@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026.10.13.2b1 — indications
+
+- Synced the indications branch with the current production panel lifecycle fixes from the 2026.10.13.2 main release.
+- First-load bootstrap now starts immediately once the custom panel is connected, avoiding the previous wait for the 61-second background poll.
+- Optional privacy controls remain opt-in and are applied consistently across bootstrap, background refresh and forced refresh paths.
+- Improved readability of the smallest panel metadata and history/analytics labels.
+- Kept indication-only functionality isolated from `master`; this beta version is for the indications line only.
+
 ## 0.2.6
 
 - Fixed transaction-form data loss during the 61-second background portfolio refresh. An open Add Investment dialog is no longer rebuilt by automatic refreshes.
