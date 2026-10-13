@@ -83,6 +83,18 @@ def test_runtime_never_forwards_existing_portfolio_to_purchase_gate():
     assert 'portfolio_risk["scope"] = policy.risk_scope' in manager
 
 
+def test_contribution_runtime_recovers_affordable_minimum_lots():
+    manager = (ROOT / "contribution_manager.py").read_text(encoding="utf-8")
+    recovery = (ROOT / "affordable_lots.py").read_text(encoding="utf-8")
+    panel = (ROOT / "www" / "investment-panel-indications.js").read_text(encoding="utf-8")
+    assert "from .affordable_lots import recover_affordable_minimum_lots" in manager
+    assert "result = recover_affordable_minimum_lots(" in manager
+    assert "one_affordable_lot_per_empty_sleeve" in recovery
+    assert "Existing portfolio holdings are never used by this recovery" in recovery
+    assert "minimum_lot_override" in panel
+    assert "Προσαρμογή σε προσιτή ακέραιη μονάδα" in panel
+
+
 def test_panel_exposes_one_owned_filter_and_hides_old_portfolio_constraints():
     panel = (ROOT / "www" / "investment-panel-contribution.js").read_text(encoding="utf-8")
     assert "Owned-investment filter" in panel
