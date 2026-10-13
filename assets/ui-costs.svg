@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="820" viewBox="0 0 1440 820">
+<defs>
+ <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#071421"/><stop offset="1" stop-color="#10263a"/></linearGradient>
+ <linearGradient id="accent" x1="0" y1="0" x2="1" y2="0"><stop stop-color="#26c6da"/><stop offset="1" stop-color="#29b6f6"/></linearGradient>
+ <filter id="shadow"><feDropShadow dx="0" dy="10" stdDeviation="12" flood-opacity=".25"/></filter>
+</defs>
+<rect width="100%" height="100%" rx="28" fill="url(#bg)"/>
+<rect x="32" y="28" width="1376" height="764" rx="24" fill="#0b1d2b" stroke="#21435a" filter="url(#shadow)"/>
+<text x="70" y="84" font-family="Inter,Segoe UI,Arial" font-size="34" font-weight="700" fill="#f4f8fb">Costs, fees &amp; purchase details</text>
+<text x="70" y="118" font-family="Inter,Segoe UI,Arial" font-size="17" fill="#8fb3c8">Cash principal and transaction costs stay separate</text>
+<rect x="70" y="155" width="380" height="125" rx="16" fill="#10283a" stroke="#24475e"/>
+ <text x="92" y="189" font-family="Inter,Segoe UI,Arial" font-size="15" fill="#8fb3c8">Gross quantity</text>
+ <text x="92" y="229" font-family="Inter,Segoe UI,Arial" font-size="30" font-weight="700" fill="#f4f8fb">0.04554000 BCH</text>
+ 
+<rect x="475" y="155" width="380" height="125" rx="16" fill="#10283a" stroke="#24475e"/>
+ <text x="497" y="189" font-family="Inter,Segoe UI,Arial" font-size="15" fill="#8fb3c8">Net received</text>
+ <text x="497" y="229" font-family="Inter,Segoe UI,Arial" font-size="30" font-weight="700" fill="#f4f8fb">0.04508460 BCH</text>
+ 
+<rect x="880" y="155" width="415" height="125" rx="16" fill="#10283a" stroke="#24475e"/>
+ <text x="902" y="189" font-family="Inter,Segoe UI,Arial" font-size="15" fill="#8fb3c8">Asset fee</text>
+ <text x="902" y="229" font-family="Inter,Segoe UI,Arial" font-size="30" font-weight="700" fill="#f4f8fb">0.00045540 BCH</text>
+ <text x="902" y="255" font-family="Inter,Segoe UI,Arial" font-size="13" fill="#56d6c9">1.00% withheld</text>
+<rect x="70" y="310" width="380" height="125" rx="16" fill="#10283a" stroke="#24475e"/>
+ <text x="92" y="344" font-family="Inter,Segoe UI,Arial" font-size="15" fill="#8fb3c8">Quoted price</text>
+ <text x="92" y="384" font-family="Inter,Segoe UI,Arial" font-size="30" font-weight="700" fill="#f4f8fb">€2,030.00 / BCH</text>
+ 
+<rect x="475" y="310" width="380" height="125" rx="16" fill="#10283a" stroke="#24475e"/>
+ <text x="497" y="344" font-family="Inter,Segoe UI,Arial" font-size="15" fill="#8fb3c8">Investment principal</text>
+ <text x="497" y="384" font-family="Inter,Segoe UI,Arial" font-size="30" font-weight="700" fill="#f4f8fb">€91.98</text>
+ 
+<rect x="880" y="310" width="415" height="125" rx="16" fill="#10283a" stroke="#24475e"/>
+ <text x="902" y="344" font-family="Inter,Segoe UI,Arial" font-size="15" fill="#8fb3c8">Cash fees</text>
+ <text x="902" y="384" font-family="Inter,Segoe UI,Arial" font-size="30" font-weight="700" fill="#f4f8fb">€1.84</text>
+ <text x="902" y="410" font-family="Inter,Segoe UI,Arial" font-size="13" fill="#56d6c9">Platform + bank</text>
+<rect x="70" y="470" width="1225" height="215" rx="18" fill="#10283a" stroke="#24475e"/>
+<text x="98" y="515" font-family="Inter,Segoe UI,Arial" font-size="20" font-weight="700" fill="#fff">All-in accounting</text>
+<text x="98" y="565" font-family="Inter,Segoe UI,Arial" font-size="16" fill="#8fb3c8">Principal</text><text x="410" y="565" font-family="Inter,Segoe UI,Arial" font-size="20" fill="#fff">€91.98</text>
+<text x="98" y="610" font-family="Inter,Segoe UI,Arial" font-size="16" fill="#8fb3c8">Transaction costs</text><text x="410" y="610" font-family="Inter,Segoe UI,Arial" font-size="20" fill="#fff">€1.84</text>
+<text x="760" y="565" font-family="Inter,Segoe UI,Arial" font-size="16" fill="#8fb3c8">Total paid</text><text x="1040" y="565" font-family="Inter,Segoe UI,Arial" font-size="27" font-weight="700" fill="#42d5ff">€93.82</text>
+<text x="760" y="610" font-family="Inter,Segoe UI,Arial" font-size="16" fill="#8fb3c8">Asset-fee value</text><text x="1040" y="610" font-family="Inter,Segoe UI,Arial" font-size="20" fill="#fff">tracked, not double-counted</text>
+</svg>

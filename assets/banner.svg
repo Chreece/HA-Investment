@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="720" viewBox="0 0 1600 720">
+<defs>
+ <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#06121d"/><stop offset=".55" stop-color="#0d2638"/><stop offset="1" stop-color="#12334a"/></linearGradient>
+ <linearGradient id="a" x1="0" y1="0" x2="1" y2="0"><stop stop-color="#42d5ff"/><stop offset="1" stop-color="#28d7b4"/></linearGradient>
+ <filter id="s"><feDropShadow dx="0" dy="16" stdDeviation="20" flood-opacity=".35"/></filter>
+</defs>
+<rect width="1600" height="720" fill="url(#bg)"/>
+<circle cx="1310" cy="130" r="260" fill="#1d5c79" opacity=".12"/>
+<path d="M120 170 L210 90 L300 170 V285 H245 V210 H175 V285 H120Z" fill="none" stroke="url(#a)" stroke-width="18" stroke-linejoin="round"/>
+<rect x="155" y="210" width="20" height="60" rx="7" fill="#42d5ff"/><rect x="190" y="185" width="20" height="85" rx="7" fill="#42d5ff"/><rect x="225" y="150" width="20" height="120" rx="7" fill="#42d5ff"/>
+<path d="M250 285 C290 250 310 220 330 175 C280 178 250 205 250 245 C250 260 252 274 250 285Z" fill="#28d7b4"/>
+<text x="365" y="170" font-family="Inter,Segoe UI,Arial" font-size="70" font-weight="800" fill="#f4f8fb">HA <tspan fill="#42d5ff">Investment</tspan></text>
+<text x="365" y="225" font-family="Inter,Segoe UI,Arial" font-size="26" fill="#a8c4d4">Portfolio tracking, transactions, costs, P/L and trends for Home Assistant</text>
+<g transform="translate(120,340)" filter="url(#s)">
+ <rect width="1360" height="260" rx="28" fill="#091a27" stroke="#24516a"/>
+ <rect x="28" y="26" width="235" height="208" rx="18" fill="#0f2a3d"/>
+ <text x="55" y="65" font-family="Inter,Segoe UI,Arial" font-size="17" font-weight="700" fill="#42d5ff">Portfolio</text>
+ <text x="55" y="100" font-family="Inter,Segoe UI,Arial" font-size="15" fill="#90b3c7">Holdings</text>
+ <text x="55" y="133" font-family="Inter,Segoe UI,Arial" font-size="15" fill="#90b3c7">Transactions</text>
+ <text x="55" y="166" font-family="Inter,Segoe UI,Arial" font-size="15" fill="#90b3c7">Providers</text>
+ <text x="55" y="199" font-family="Inter,Segoe UI,Arial" font-size="15" fill="#90b3c7">Settings</text>
+ <rect x="292" y="26" width="260" height="92" rx="16" fill="#10283a"/><text x="315" y="56" font-family="Inter,Segoe UI,Arial" font-size="14" fill="#8fb3c8">Portfolio value</text><text x="315" y="92" font-family="Inter,Segoe UI,Arial" font-size="31" font-weight="700" fill="#fff">€52,436.18</text>
+ <rect x="575" y="26" width="260" height="92" rx="16" fill="#10283a"/><text x="598" y="56" font-family="Inter,Segoe UI,Arial" font-size="14" fill="#8fb3c8">Total P/L</text><text x="598" y="92" font-family="Inter,Segoe UI,Arial" font-size="31" font-weight="700" fill="#56d6c9">+€8,215.67</text>
+ <rect x="858" y="26" width="210" height="92" rx="16" fill="#10283a"/><text x="881" y="56" font-family="Inter,Segoe UI,Arial" font-size="14" fill="#8fb3c8">Positions</text><text x="881" y="92" font-family="Inter,Segoe UI,Arial" font-size="31" font-weight="700" fill="#fff">12</text>
+ <rect x="1091" y="26" width="240" height="92" rx="16" fill="#10283a"/><text x="1114" y="56" font-family="Inter,Segoe UI,Arial" font-size="14" fill="#8fb3c8">Trading currencies</text><text x="1114" y="92" font-family="Inter,Segoe UI,Arial" font-size="23" font-weight="700" fill="#fff">EUR · USD · GBP</text>
+ <rect x="292" y="140" width="1039" height="94" rx="16" fill="#10283a"/>
+ <polyline points="320,210 370,195 420,202 470,170 520,181 570,155 620,162 670,146 720,158 770,130 820,138 870,120 920,128 970,106 1020,114 1070,93 1120,101 1170,84 1220,93 1290,64" fill="none" stroke="#42d5ff" stroke-width="5"/>
+</g>
+<text x="120" y="665" font-family="Inter,Segoe UI,Arial" font-size="17" fill="#7ea8bd">SEARCH • BUY/SELL LEDGER • FEES • PROVIDERS • ANALYTICS • HISTORY • MULTI-CURRENCY • MOBILE</text>
+</svg>

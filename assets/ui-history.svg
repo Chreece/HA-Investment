@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="820" viewBox="0 0 1440 820">
+<defs>
+ <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#071421"/><stop offset="1" stop-color="#10263a"/></linearGradient>
+ <linearGradient id="accent" x1="0" y1="0" x2="1" y2="0"><stop stop-color="#26c6da"/><stop offset="1" stop-color="#29b6f6"/></linearGradient>
+ <filter id="shadow"><feDropShadow dx="0" dy="10" stdDeviation="12" flood-opacity=".25"/></filter>
+</defs>
+<rect width="100%" height="100%" rx="28" fill="url(#bg)"/>
+<rect x="32" y="28" width="1376" height="764" rx="24" fill="#0b1d2b" stroke="#21435a" filter="url(#shadow)"/>
+<text x="70" y="84" font-family="Inter,Segoe UI,Arial" font-size="34" font-weight="700" fill="#f4f8fb">Historical trends</text>
+<text x="70" y="118" font-family="Inter,Segoe UI,Arial" font-size="17" fill="#8fb3c8">Portfolio, category and holding history with metric-aware views</text>
+<rect x="70" y="155" width="1225" height="535" rx="18" fill="#10283a" stroke="#24475e"/>
+<text x="100" y="205" font-family="Inter,Segoe UI,Arial" font-size="20" font-weight="700" fill="#fff">VWCE · Value</text>
+<text x="1160" y="205" font-family="Inter,Segoe UI,Arial" font-size="17" fill="#56d6c9">1Y</text>
+<rect x="100" y="235" width="70" height="38" rx="19" fill="#0a1925"/><text x="125" y="260" font-family="Inter,Segoe UI,Arial" font-size="14" fill="#8fb3c8">1D</text><rect x="186" y="235" width="70" height="38" rx="19" fill="#0a1925"/><text x="211" y="260" font-family="Inter,Segoe UI,Arial" font-size="14" fill="#8fb3c8">1W</text><rect x="272" y="235" width="70" height="38" rx="19" fill="#0a1925"/><text x="297" y="260" font-family="Inter,Segoe UI,Arial" font-size="14" fill="#8fb3c8">1M</text><rect x="358" y="235" width="70" height="38" rx="19" fill="#0a1925"/><text x="383" y="260" font-family="Inter,Segoe UI,Arial" font-size="14" fill="#8fb3c8">3M</text><rect x="444" y="235" width="70" height="38" rx="19" fill="#1d536c"/><text x="469" y="260" font-family="Inter,Segoe UI,Arial" font-size="14" fill="#42d5ff">1Y</text><rect x="530" y="235" width="70" height="38" rx="19" fill="#0a1925"/><text x="555" y="260" font-family="Inter,Segoe UI,Arial" font-size="14" fill="#8fb3c8">5Y</text>
+<line x1="110" y1="610" x2="1255" y2="610" stroke="#27485d"/><line x1="110" y1="480" x2="1255" y2="480" stroke="#27485d"/><line x1="110" y1="350" x2="1255" y2="350" stroke="#27485d"/>
+<polyline points="120,575 180,560 240,580 300,530 360,545 420,510 480,522 540,470 600,488 660,445 720,462 780,420 840,438 900,390 960,405 1020,365 1080,380 1140,330 1200,345 1250,305" fill="none" stroke="#42d5ff" stroke-width="6"/>
+<text x="100" y="660" font-family="Inter,Segoe UI,Arial" font-size="14" fill="#8fb3c8">Switch between value, price, units, realized P/L and unrealized P/L where applicable.</text>
+</svg>
