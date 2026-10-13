@@ -382,6 +382,7 @@ async def ws_remove(hass: HomeAssistant, connection, msg: dict[str, Any]) -> Non
         vol.Required("type"): "investment/set_preferences",
         vol.Optional("base_currency"): vol.All(str, vol.Length(min=3, max=3)),
         vol.Optional("language"): vol.In((DEFAULT_UI_LANGUAGE, *SUPPORTED_UI_LANGUAGES)),
+        vol.Optional("privacy_controls_enabled"): bool,
         vol.Optional("incognito"): bool,
         vol.Optional("remote_privacy"): bool,
         vol.Optional("incognito_reveal_seconds"): vol.All(vol.Coerce(int), vol.Range(min=0, max=MAX_INCOGNITO_REVEAL_SECONDS)),
@@ -404,6 +405,7 @@ async def ws_preferences(hass: HomeAssistant, connection, msg: dict[str, Any]) -
             _user_id(connection),
             base_currency=msg.get("base_currency"),
             language=msg.get("language"),
+            privacy_controls_enabled=msg.get("privacy_controls_enabled"),
             incognito=msg.get("incognito"),
             remote_privacy=msg.get("remote_privacy"),
             incognito_reveal_seconds=msg.get("incognito_reveal_seconds"),
@@ -420,6 +422,7 @@ async def ws_preferences(hass: HomeAssistant, connection, msg: dict[str, Any]) -
             {
                 "base_currency": user["base_currency"],
                 "language": user.get("language", DEFAULT_UI_LANGUAGE),
+                "privacy_controls_enabled": bool(user.get("privacy_controls_enabled", False)),
                 "incognito": bool(user.get("incognito", False)),
                 "remote_privacy": bool(user.get("remote_privacy", False)),
                 "incognito_reveal_seconds": int(user.get("incognito_reveal_seconds", DEFAULT_INCOGNITO_REVEAL_SECONDS)),

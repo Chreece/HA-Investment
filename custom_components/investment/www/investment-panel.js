@@ -492,9 +492,9 @@ const R17_I18N = {"en":{"automationEntities":"Automation entities","automationEn
 for (const [lang, values] of Object.entries(R17_I18N)) Object.assign(I18N[lang] || I18N.en, values);
 
 const PRIVACY_SETTINGS_I18N = {
-  en:{privacyMode:"Privacy mode",privacyModeHint:"Hide sensitive portfolio values until you reveal them.",remotePrivacy:"Automatic privacy on remote connections",remotePrivacyHint:"Automatically start in Privacy Mode when Home Assistant sees this browser as remote. Off by default."},
-  de:{privacyMode:"Privatsphäre-Modus",privacyModeHint:"Sensible Portfoliowerte ausblenden, bis du sie einblendest.",remotePrivacy:"Automatische Privatsphäre bei Remote-Verbindungen",remotePrivacyHint:"Startet automatisch im Privatsphäre-Modus, wenn Home Assistant diesen Browser als remote erkennt. Standardmäßig aus."},
-  el:{privacyMode:"Λειτουργία απορρήτου",privacyModeHint:"Απόκρυψη ευαίσθητων τιμών του χαρτοφυλακίου μέχρι να τις εμφανίσεις.",remotePrivacy:"Αυτόματο απόρρητο σε απομακρυσμένες συνδέσεις",remotePrivacyHint:"Ξεκινά αυτόματα σε λειτουργία απορρήτου όταν το Home Assistant βλέπει αυτόν τον browser ως απομακρυσμένο. Απενεργοποιημένο από προεπιλογή."}
+  en:{privacyControls:"Privacy controls",privacyControlsHint:"Enable the privacy feature and its quick-hide button. Off by default.",privacyMode:"Start in Privacy Mode",privacyModeHint:"Hide sensitive portfolio values until you reveal them.",remotePrivacy:"Automatic privacy on remote connections",remotePrivacyHint:"Automatically start in Privacy Mode when Home Assistant sees this browser as remote. Off by default."},
+  de:{privacyControls:"Privatsphäre-Funktionen",privacyControlsHint:"Aktiviert die Privatsphäre-Funktion und die Schnell-Ausblenden-Schaltfläche. Standardmäßig aus.",privacyMode:"Im Privatsphäre-Modus starten",privacyModeHint:"Sensible Portfoliowerte ausblenden, bis du sie einblendest.",remotePrivacy:"Automatische Privatsphäre bei Remote-Verbindungen",remotePrivacyHint:"Startet automatisch im Privatsphäre-Modus, wenn Home Assistant diesen Browser als remote erkennt. Standardmäßig aus."},
+  el:{privacyControls:"Έλεγχοι απορρήτου",privacyControlsHint:"Ενεργοποιεί τη λειτουργία απορρήτου και το κουμπί γρήγορης απόκρυψης. Απενεργοποιημένο από προεπιλογή.",privacyMode:"Έναρξη σε λειτουργία απορρήτου",privacyModeHint:"Απόκρυψη ευαίσθητων τιμών του χαρτοφυλακίου μέχρι να τις εμφανίσεις.",remotePrivacy:"Αυτόματο απόρρητο σε απομακρυσμένες συνδέσεις",remotePrivacyHint:"Ξεκινά αυτόματα σε λειτουργία απορρήτου όταν το Home Assistant βλέπει αυτόν τον browser ως απομακρυσμένο. Απενεργοποιημένο από προεπιλογή."}
 };
 for (const [lang, values] of Object.entries(PRIVACY_SETTINGS_I18N)) Object.assign(I18N[lang] || I18N.en, values);
 
@@ -715,7 +715,7 @@ class InvestmentPanel extends HTMLElement {
     super(); this.attachShadow({mode:"open"});
     this._hass=null; this._loaded=false; this._loading=true; this._loadFailed=false; this._portfolio=null; this._haConnected=false; this._haConnection=null; this._bootstrapRetryTimer=null; this._bootstrapRetryAttempt=0;
     this._search=""; this._searchCurrency=null; this._searching=false; this._results=[]; this._searchTimer=null; this._searchSeq=0; this._searchActive=false; this._searchHover=false;
-    this._settings=false; this._incognito=false; this._storedIncognito=false; this._connectionLocal=true; this._remotePrivacyEnabled=false; this._remotePrivacyDefault=false; this._incognitoSessionOverride=null; this._incognitoRevealSeconds=5; this._incognitoRevealElement=null; this._incognitoRevealNodes=[]; this._incognitoRevealTimer=null; this._addDraft=null; this._adding=false; this._portfolioSeq=0; this._portfolioRenderDeferred=false; this._expanded=new Set(); this._expandedCategories=new Set(); this._expandedLedgers=new Set(); this._error=""; this._haLang="en"; this._preferredLang="auto"; this._lang=null; this._rootPointerBound=false;
+    this._settings=false; this._privacyControlsEnabled=false; this._incognito=false; this._storedIncognito=false; this._connectionLocal=true; this._remotePrivacyEnabled=false; this._remotePrivacyDefault=false; this._incognitoSessionOverride=null; this._incognitoRevealSeconds=5; this._incognitoRevealElement=null; this._incognitoRevealNodes=[]; this._incognitoRevealTimer=null; this._addDraft=null; this._adding=false; this._portfolioSeq=0; this._portfolioRenderDeferred=false; this._expanded=new Set(); this._expandedCategories=new Set(); this._expandedLedgers=new Set(); this._error=""; this._haLang="en"; this._preferredLang="auto"; this._lang=null; this._rootPointerBound=false;
     this._developerIndicatorUnlocked=false; this._indicatorUnlockPresses=0; this._indicatorUnlocking=false;
     this._sourceUpdateChecking=false; this._sourceUpdateError=""; this._sourceUpdateSignature="";
     this._indicationOpen=false; this._indicating=false; this._indicationResult=null; this._indicationError=""; this._indicationAiTasks=[]; this._indicationAiTasksLoaded=false; this._indicationPreferencesLoaded=false; this._indicationAdvancedOpen=false; this._indicationPersistTimer=null; this._indicationDisclaimerOpen=false; this._indicationDisclaimerAck=false; this._indicationDisclaimerTermsAck=false; this._indicationDisclaimerRegion=""; this._indicationDisclaimerAccepting=false; this._indicationProgress={percent:0,stage:"starting",detail:null}; this._indicationProgressJobId=null; this._indicationRunSeq=0; this._indicationDraft={scope:"discover",mode:"deterministic",amount:"",category:"",aiTaskEntityId:"",riskTolerance:"medium",horizon:"medium",strategy:"adaptive",overlapPolicy:"penalize",overlapThreshold:"20",diversification:"medium",maxCandidatePct:"",minConfidencePct:"45",minCashReservePct:"0",wholeUnitsOnly:false,wholeUnitCategories:[],costsConfirmed:false,fixedFee:"0",commissionPct:"0",spreadBps:"0",fxBps:"0",existingCash:"0",maxDrawdownPct:"",analysisHorizonWeeks:""};
@@ -929,14 +929,15 @@ class InvestmentPanel extends HTMLElement {
     this._bootstrapRetryAttempt=0;
     this.clearBootstrapRetry();
     this._developerIndicatorUnlocked=!!portfolio?.developer_indicator_unlocked;
-    this._storedIncognito=!!portfolio?.incognito;
+    this._privacyControlsEnabled=portfolio?.privacy_controls_enabled===true;
+    this._storedIncognito=this._privacyControlsEnabled&&!!portfolio?.incognito;
     this._incognitoRevealSeconds=clamp(Math.trunc(Number(portfolio?.incognito_reveal_seconds??5)||0),0,300);
     this._connectionLocal=portfolio?.connection_local===true;
-    this._remotePrivacyEnabled=portfolio?.remote_privacy===true;
-    this._remotePrivacyDefault=!this._connectionLocal&&this._remotePrivacyEnabled;
-    if(this._connectionLocal||!this._remotePrivacyEnabled)this._incognitoSessionOverride=null;
-    const remotePrivacy=this._remotePrivacyDefault&&this._incognitoSessionOverride!==false;
-    this._incognito=this._storedIncognito||remotePrivacy||this._incognitoSessionOverride===true;
+    this._remotePrivacyEnabled=this._privacyControlsEnabled&&portfolio?.remote_privacy===true;
+    this._remotePrivacyDefault=this._privacyControlsEnabled&&!this._connectionLocal&&this._remotePrivacyEnabled;
+    if(!this._privacyControlsEnabled||this._connectionLocal||!this._remotePrivacyEnabled)this._incognitoSessionOverride=null;
+    const remotePrivacy=this._privacyControlsEnabled&&this._remotePrivacyDefault&&this._incognitoSessionOverride!==false;
+    this._incognito=this._privacyControlsEnabled&&(this._storedIncognito||remotePrivacy||this._incognitoSessionOverride===true);
     if(!this._indicationPreferencesLoaded&&portfolio?.indication_preferences){
       this._indicationDraft=this.indicationDraftFromStored(portfolio.indication_preferences);
       this._indicationPreferencesLoaded=true;
@@ -1818,7 +1819,19 @@ class InvestmentPanel extends HTMLElement {
     clearTimeout(this._incognitoRevealTimer);this._incognitoRevealTimer=null;
     if(seconds>0)this._incognitoRevealTimer=setTimeout(()=>this.clearIncognitoReveal(),seconds*1000);
   }
+  async savePrivacyControls(enabled){
+    this.clearIncognitoReveal();
+    const next=!!enabled;
+    const previous={controls:this._privacyControlsEnabled,stored:this._storedIncognito,remoteEnabled:this._remotePrivacyEnabled,remoteDefault:this._remotePrivacyDefault,override:this._incognitoSessionOverride,incognito:this._incognito,portfolio:this._portfolio};
+    this._privacyControlsEnabled=next;
+    if(!next){this._storedIncognito=false;this._remotePrivacyEnabled=false;this._remotePrivacyDefault=false;this._incognitoSessionOverride=null;this._incognito=false;}
+    if(this._portfolio)this._portfolio={...this._portfolio,privacy_controls_enabled:next,...(!next?{incognito:false,remote_privacy:false}:{})};
+    this.render();
+    try{await this.call({type:"investment/set_preferences",privacy_controls_enabled:next,...(!next?{incognito:false,remote_privacy:false}:{})});}
+    catch(e){this._privacyControlsEnabled=previous.controls;this._storedIncognito=previous.stored;this._remotePrivacyEnabled=previous.remoteEnabled;this._remotePrivacyDefault=previous.remoteDefault;this._incognitoSessionOverride=previous.override;this._incognito=previous.incognito;this._portfolio=previous.portfolio;this._error=e?.message||String(e);this.render();}
+  }
   async savePrivacyMode(enabled){
+    if(!this._privacyControlsEnabled)return;
     this.clearIncognitoReveal();
     const next=!!enabled,previousStored=this._storedIncognito,previous=this._incognito;
     this._storedIncognito=next;
@@ -1830,6 +1843,7 @@ class InvestmentPanel extends HTMLElement {
     catch(e){this._storedIncognito=previousStored;this._incognito=previous;if(this._portfolio)this._portfolio={...this._portfolio,incognito:previousStored};this._error=e?.message||String(e);this.render();}
   }
   async saveRemotePrivacy(enabled){
+    if(!this._privacyControlsEnabled)return;
     this.clearIncognitoReveal();
     const next=!!enabled,previousEnabled=this._remotePrivacyEnabled,previousDefault=this._remotePrivacyDefault,previousOverride=this._incognitoSessionOverride,previous=this._incognito;
     this._remotePrivacyEnabled=next;
@@ -1851,6 +1865,7 @@ class InvestmentPanel extends HTMLElement {
     catch(e){this._incognitoRevealSeconds=previous;if(this._portfolio)this._portfolio={...this._portfolio,incognito_reveal_seconds:previous};this._error=e?.message||String(e);this.render();}
   }
   async toggleIncognito(){
+    if(!this._privacyControlsEnabled)return;
     this.clearIncognitoReveal();
     const next=!this._incognito, previous=this._incognito, previousStored=this._storedIncognito, previousOverride=this._incognitoSessionOverride;
     if(this._remotePrivacyDefault){
@@ -2937,7 +2952,7 @@ class InvestmentPanel extends HTMLElement {
       <div class="page ${this._incognito?"incognito":""}">
         <header class="topbar">
           <div><div class="eyebrow">HA Investment</div><h1>${esc(this.t("title"))}</h1></div>
-          <div class="header-actions"><span class="free">${esc(this.t("freeData"))}</span>${this._developerIndicatorUnlocked?`<button class="icon-btn indication-button" id="indication" title="${esc(this.t("investmentIndication"))}" aria-label="${esc(this.t("investmentIndication"))}">⌁</button>`:`<button class="icon-btn indication-gate" id="indication-gate" type="button" tabindex="-1" aria-hidden="true"></button>`}<button class="icon-btn ${this._incognito?"active":""}" id="incognito" title="${esc(this._remotePrivacyDefault&&this._incognito&&!this._storedIncognito?this.t("remotePrivacyHint"):(this._incognito?this.t("incognitoDisable"):this.t("incognitoEnable")))}" aria-pressed="${this._incognito?"true":"false"}">◉</button><button class="icon-btn" id="refresh" title="${esc(this.t("refresh"))}" aria-label="${esc(this.t("refresh"))}"><span class="refresh-glyph">↻</span></button><button class="icon-btn" id="settings" title="${esc(this.t("settings"))}">⚙</button></div>
+          <div class="header-actions"><span class="free">${esc(this.t("freeData"))}</span>${this._developerIndicatorUnlocked?`<button class="icon-btn indication-button" id="indication" title="${esc(this.t("investmentIndication"))}" aria-label="${esc(this.t("investmentIndication"))}">⌁</button>`:`<button class="icon-btn indication-gate" id="indication-gate" type="button" tabindex="-1" aria-hidden="true"></button>`}${this._privacyControlsEnabled?`<button class="icon-btn ${this._incognito?"active":""}" id="incognito" title="${esc(this._remotePrivacyDefault&&this._incognito&&!this._storedIncognito?this.t("remotePrivacyHint"):(this._incognito?this.t("incognitoDisable"):this.t("incognitoEnable")))}" aria-pressed="${this._incognito?"true":"false"}">◉</button>`:""}<button class="icon-btn" id="refresh" title="${esc(this.t("refresh"))}" aria-label="${esc(this.t("refresh"))}"><span class="refresh-glyph">↻</span></button><button class="icon-btn" id="settings" title="${esc(this.t("settings"))}">⚙</button></div>
         </header>
         ${this._error?`<div class="banner error-banner"><span>${esc(this._error)}</span><button id="dismiss-error">×</button></div>`:""}
         ${this._loading&&!this._portfolio?`<div class="loading-card">${esc(this._haConnected?this.t("loading"):this.t("portfolioWaitingConnection"))}</div>`:this._loadFailed&&!this._portfolio?`<div class="loading-card load-failed"><strong>${esc(this.t("portfolioLoadFailed"))}</strong><small>${esc(this._error||this.t("portfolioLoadTimeout"))}</small><button id="portfolio-retry" type="button">${esc(this.t("retryPortfolio"))}</button></div>`:`
@@ -3219,7 +3234,8 @@ class InvestmentPanel extends HTMLElement {
     const cur=this._portfolio?.base_currency||"EUR";
     const lang=this._preferredLang||"auto";
     const exposed=new Set(this._portfolio?.exposed_entities||[]);
-    const privacyEnabled=!!this._storedIncognito;
+    const privacyControlsEnabled=!!this._privacyControlsEnabled;
+    const privacyEnabled=privacyControlsEnabled&&!!this._storedIncognito;
     const remotePrivacyEnabled=!!this._portfolio?.remote_privacy;
     const providers=this.holdingProviders();
     const usage=new Map();
@@ -3234,7 +3250,7 @@ class InvestmentPanel extends HTMLElement {
     const entityOptions=AUTOMATION_ENTITY_OPTIONS.map(([metric,label])=>`<label class="automation-entity-option"><input type="checkbox" data-exposed-entity="${esc(metric)}" ${exposed.has(metric)?"checked":""}/><span>${esc(this.t(label))}</span></label>`).join("");
     const providerRows=providers.map(provider=>{const count=usage.get(String(provider.id))||0;return `<div class="holding-provider-row"><input data-holding-provider-name="${esc(provider.id)}" maxlength="80" value="${esc(provider.name)}" aria-label="${esc(this.t("holdingProvider"))}"/><button type="button" data-remove-holding-provider="${esc(provider.id)}" ${count?"disabled":""} title="${esc(count?this.t("providerInUse"):this.t("remove"))}">×</button></div>`;}).join("");
     const legalRegion=String(this._portfolio?.indication_disclaimer_region||"");
-    return `<div class="modal-backdrop"><div class="modal settings-modal"><div class="modal-head"><h3>${esc(this.t("settings"))}</h3><button id="close-settings">×</button></div><div class="setting-grid"><label class="setting-field"><span>${esc(this.t("baseCurrency"))}</span><select id="base-currency">${COMMON_CURRENCIES.map(c=>`<option value="${c}" ${c===cur?"selected":""}>${c}</option>`).join("")}</select></label><label class="setting-field"><span>${esc(this.t("language"))}</span><select id="ui-language">${languageOptions}</select></label><div class="setting-field privacy-setting"><span>${esc(this.t("privacyMode"))}</span><label class="setting-check"><input id="privacy-mode-enabled" type="checkbox" ${privacyEnabled?"checked":""}/><span>${esc(this.t("privacyModeHint"))}</span></label></div><div class="setting-field privacy-setting"><span>${esc(this.t("remotePrivacy"))}</span><label class="setting-check"><input id="remote-privacy-enabled" type="checkbox" ${remotePrivacyEnabled?"checked":""}/><span>${esc(this.t("remotePrivacyHint"))}</span></label></div><label class="setting-field privacy-reveal-setting"><span>${esc(this.t("incognitoRevealSeconds"))}</span><input id="incognito-reveal-seconds" type="number" min="0" max="300" step="1" inputmode="numeric" value="${esc(String(this._incognitoRevealSeconds))}"/><small>${esc(this.t("incognitoRevealHint"))}</small></label></div><section class="holding-providers"><strong>${esc(this.t("holdingProviders"))}</strong><small>${esc(this.t("holdingProvidersHint"))}</small><div class="holding-provider-list">${providerRows||"<div class=\"holding-provider-empty\">—</div>"}</div><div class="holding-provider-add"><input id="new-holding-provider" maxlength="80" placeholder="${esc(this.t("newProvider"))}" aria-label="${esc(this.t("newProvider"))}"/><button type="button" id="add-holding-provider">＋ ${esc(this.t("addProvider"))}</button></div></section><section class="automation-entities"><strong>${esc(this.t("automationEntities"))}</strong><small>${esc(this.t("automationEntitiesHint"))}</small><div class="automation-entity-grid">${entityOptions}</div><p>⚠ ${esc(this.t("automationEntitiesPrivacy"))}</p></section>${this.sourceUpdateHtml()}${this._developerIndicatorUnlocked?`<section class="legal-settings"><strong>${esc(this.t("legalTermsTitle"))}</strong><small>${esc(this.t("legalAccepted"))}: ${esc(legalRegion?this.legalRegionLabel(legalRegion):"—")} · v${Number(this._portfolio?.indication_disclaimer_version||0)}</small><button type="button" class="secondary-btn" data-review-indication-legal>${esc(this.t("legalReview"))}</button></section>`:""}<p>${esc(this.t("freeData"))}</p></div></div>`;
+    return `<div class="modal-backdrop"><div class="modal settings-modal"><div class="modal-head"><h3>${esc(this.t("settings"))}</h3><button id="close-settings">×</button></div><div class="setting-grid"><label class="setting-field"><span>${esc(this.t("baseCurrency"))}</span><select id="base-currency">${COMMON_CURRENCIES.map(c=>`<option value="${c}" ${c===cur?"selected":""}>${c}</option>`).join("")}</select></label><label class="setting-field"><span>${esc(this.t("language"))}</span><select id="ui-language">${languageOptions}</select></label><div class="setting-field privacy-setting"><span>${esc(this.t("privacyControls"))}</span><label class="setting-check"><input id="privacy-controls-enabled" type="checkbox" ${privacyControlsEnabled?"checked":""}/><span>${esc(this.t("privacyControlsHint"))}</span></label></div>${privacyControlsEnabled?`<div class="setting-field privacy-setting"><span>${esc(this.t("privacyMode"))}</span><label class="setting-check"><input id="privacy-mode-enabled" type="checkbox" ${privacyEnabled?"checked":""}/><span>${esc(this.t("privacyModeHint"))}</span></label></div><div class="setting-field privacy-setting"><span>${esc(this.t("remotePrivacy"))}</span><label class="setting-check"><input id="remote-privacy-enabled" type="checkbox" ${remotePrivacyEnabled?"checked":""}/><span>${esc(this.t("remotePrivacyHint"))}</span></label></div><label class="setting-field privacy-reveal-setting"><span>${esc(this.t("incognitoRevealSeconds"))}</span><input id="incognito-reveal-seconds" type="number" min="0" max="300" step="1" inputmode="numeric" value="${esc(String(this._incognitoRevealSeconds))}"/><small>${esc(this.t("incognitoRevealHint"))}</small></label>`:""}</div><section class="holding-providers"><strong>${esc(this.t("holdingProviders"))}</strong><small>${esc(this.t("holdingProvidersHint"))}</small><div class="holding-provider-list">${providerRows||"<div class=\"holding-provider-empty\">—</div>"}</div><div class="holding-provider-add"><input id="new-holding-provider" maxlength="80" placeholder="${esc(this.t("newProvider"))}" aria-label="${esc(this.t("newProvider"))}"/><button type="button" id="add-holding-provider">＋ ${esc(this.t("addProvider"))}</button></div></section><section class="automation-entities"><strong>${esc(this.t("automationEntities"))}</strong><small>${esc(this.t("automationEntitiesHint"))}</small><div class="automation-entity-grid">${entityOptions}</div><p>⚠ ${esc(this.t("automationEntitiesPrivacy"))}</p></section>${this.sourceUpdateHtml()}${this._developerIndicatorUnlocked?`<section class="legal-settings"><strong>${esc(this.t("legalTermsTitle"))}</strong><small>${esc(this.t("legalAccepted"))}: ${esc(legalRegion?this.legalRegionLabel(legalRegion):"—")} · v${Number(this._portfolio?.indication_disclaimer_version||0)}</small><button type="button" class="secondary-btn" data-review-indication-legal>${esc(this.t("legalReview"))}</button></section>`:""}<p>${esc(this.t("freeData"))}</p></div></div>`;
   }
 
   bind(){
@@ -3256,6 +3272,9 @@ class InvestmentPanel extends HTMLElement {
     root.querySelectorAll("[data-holding-provider-name]").forEach(input=>input.addEventListener("change",()=>this.renameHoldingProvider(input.dataset.holdingProviderName,input.value)));
     root.querySelectorAll("[data-remove-holding-provider]").forEach(button=>button.addEventListener("click",()=>this.removeHoldingProvider(button.dataset.removeHoldingProvider)));
     root.querySelectorAll("[data-exposed-entity]").forEach(input=>input.addEventListener("change",()=>this.saveEntityExposure()));
+    root.getElementById("privacy-controls-enabled")?.addEventListener("change",e=>this.savePrivacyControls(e.currentTarget.checked));
+    root.getElementById("privacy-mode-enabled")?.addEventListener("change",e=>this.savePrivacyMode(e.currentTarget.checked));
+    root.getElementById("remote-privacy-enabled")?.addEventListener("change",e=>this.saveRemotePrivacy(e.currentTarget.checked));
     root.querySelector("[data-source-update-check]")?.addEventListener("click",()=>this.checkSourceUpdate());
     root.getElementById("incognito-reveal-seconds")?.addEventListener("change",e=>this.saveIncognitoRevealSeconds(e.currentTarget.value));
     root.querySelector(".modal-backdrop:not(.add-backdrop):not(.indication-backdrop):not(.disclaimer-backdrop)")?.addEventListener("click",e=>{if(e.target.classList.contains("modal-backdrop")){this._settings=false;this.render();}});
