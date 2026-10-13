@@ -91,6 +91,8 @@ def test_broker_eu_alias_recovers_separate_verified_eur_listings(modules):
     assert symbols(results) == ["SPYL.DE", "SPYL.AS"]
     assert [item.currency for item in results] == ["EUR", "EUR"]
     assert [item.exchange for item in results] == ["XETRA", "Amsterdam"]
+    assert [item.search_alias for item in results] == ["SPYL.EU", "SPYL.EU"]
+    assert results[0].as_dict()["search_alias"] == "SPYL.EU"
     assert instance._get_json.await_args.kwargs["q"] == "SPYL.EU"
 
 
@@ -115,6 +117,7 @@ def test_plain_ticker_backfills_verified_listings_when_fuzzy_search_misses_them(
     results = asyncio.run(instance.async_search("SPYL", "EUR"))
 
     assert symbols(results) == ["SPYL.DE", "SPYL.AS", "SPY5.DE"]
+    assert [item.search_alias for item in results] == [None, None, None]
     assert instance._chart.await_args_list[0] == call("SPYL-EUR", "1d", "1d")
     assert call("SPYL.DE", "1d", "1d") in instance._chart.await_args_list
     assert call("SPYL.AS", "1d", "1d") in instance._chart.await_args_list
@@ -149,6 +152,7 @@ def test_existing_yahoo_suffix_is_not_rewritten(modules):
     results = asyncio.run(instance.async_search("SPYL.DE", "EUR"))
 
     assert symbols(results) == ["SPYL.DE"]
+    assert results[0].search_alias is None
     assert instance._chart.await_count == 0
 
 
@@ -162,3 +166,10 @@ def test_verified_direct_listing_survives_generic_search_outage(modules):
     results = asyncio.run(instance.async_search("SPYL.EU", "EUR"))
 
     assert symbols(results) == ["SPYL.DE"]
+
+
+def test_search_ui_shows_broker_alias_without_replacing_provider_symbol():
+    panel = (COMPONENT / "www" / "investment-panel.js").read_text()
+    assert "const shownSymbol=r.search_alias||r.symbol" in panel
+    assert "r.search_alias&&r.search_alias!==r.symbol" in panel
+    assert "PANEL_ASSET_REVISION" not in panel
