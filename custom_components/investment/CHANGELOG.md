@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## 2026.10.13
+
+- Added market-agnostic ticker alias recovery across Yahoo-supported markets. Broker/source forms such as `SPYL.EU`, `SHOP.CA`, `VOD.UK`, `AAPL.US` and `7203.JP` are resolved to independently verified quoteable provider symbols in the requested trading currency.
+- Search now preserves the ticker alias the user entered while keeping the verified provider symbol and exchange separate for quotes/history; real Yahoo symbols remain canonical.
 - Added canonical lot-based BUY/SELL accounting with exact transaction timestamps, FIFO lot consumption, and separate realized/unrealized P/L.
 - Added holding providers/locations per BUY lot, allowing one asset to remain split across multiple brokers, exchanges, wallets or apps; provider balances are derived from the canonical ledger.
 - Added portfolio analytics for allocation by category, holding provider and trading currency, plus monthly BUY outflow, SELL inflow and net cash flow.
