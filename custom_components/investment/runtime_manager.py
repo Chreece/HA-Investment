@@ -7,6 +7,7 @@ from typing import Any, Callable
 
 from .manager import InvestmentManager as CoreInvestmentManager
 from .portfolio_context import (
+    OwnedIdentityIndex,
     build_owned_identity_index,
     context_score_fields,
     exposure_profile,
@@ -15,7 +16,7 @@ from .portfolio_context import (
 
 _PORTFOLIO_CONTEXT: ContextVar[str] = ContextVar("investment_portfolio_context", default="use")
 _EXISTING_POLICY: ContextVar[str] = ContextVar("investment_existing_policy", default="allow")
-_OWNED_INDEX: ContextVar[dict[str, dict[str, Any]] | None] = ContextVar("investment_owned_index", default=None)
+_OWNED_INDEX: ContextVar[OwnedIdentityIndex | None] = ContextVar("investment_owned_index", default=None)
 _FILTER_STATS: ContextVar[dict[str, int] | None] = ContextVar("investment_filter_stats", default=None)
 
 _EXTRA_DEFAULTS = {
@@ -87,10 +88,17 @@ class InvestmentManager(CoreInvestmentManager):
         values["existing_instruments"] = existing
         return values
 
-    async def async_portfolio(self, *args: Any, **kwargs: Any) -> dict[str, Any]:
-        portfolio = await super().async_portfolio(*args, **kwargs)
+    async def async_portfolio(
+        self, user_id: str, *, force: bool = False, refresh_market: bool = False
+    ) -> dict[str, Any]:
         if _PORTFOLIO_CONTEXT.get() != "ignore":
-            return portfolio
+            return await super().async_portfolio(
+                user_id, force=force, refresh_market=refresh_market
+            )
+        # Contribution-only scoring needs no prices or FX for old holdings.
+        # The core clears its display cache before this call, so enriching the
+        # portfolio here would repeat network work solely to discard it below.
+        portfolio = await super().async_portfolio_bootstrap(user_id, use_cache=False)
         neutral = deepcopy(portfolio)
         neutral["holdings"] = []
         neutral["categories"] = []
@@ -208,7 +216,11 @@ class InvestmentManager(CoreInvestmentManager):
                 progress_callback(3, "starting", None)
             except Exception as err:
                 _LOGGER.debug("Investment indication runtime progress callback failed: %s", err)
-        actual_portfolio = await super().async_portfolio(user_id)
+        actual_portfolio = (
+            await super().async_portfolio_bootstrap(user_id, use_cache=False)
+            if portfolio_context == "ignore"
+            else await super().async_portfolio(user_id)
+        )
         actual_holdings = list(actual_portfolio.get("holdings") or [])
         owned_index = build_owned_identity_index(actual_holdings)
         stats = {"existing": 0}

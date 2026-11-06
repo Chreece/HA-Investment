@@ -66,7 +66,9 @@ def test_vanguard_bond_examples_fit_a_100_euro_budget_as_minimum_lots():
     amounts = {row["symbol"]: row["suggested_amount"] for row in recovered}
     units = {row["symbol"]: row["suggested_units"] for row in recovered}
 
-    assert amounts == {"VGGF.DE": 4.91, "VAGF.DE": 23.12}
+    # Raw unit price is the purchase ceiling. The final cost engine rounds
+    # the cash debit; the helper must not round away authority for one unit.
+    assert amounts == {"VGGF.DE": vggf_price, "VAGF.DE": vagf_price}
     assert units == {"VGGF.DE": 1.0, "VAGF.DE": 1.0}
     assert {row["symbol"] for row in meta["selected"]} == {"VGGF.DE", "VAGF.DE"}
     assert meta["policy"] == "one_affordable_lot_per_empty_sleeve"
@@ -101,7 +103,7 @@ def test_explicit_candidate_cap_still_blocks_an_oversized_minimum_lot():
 
     recovered, meta = build(rows, budget=100.0, cap=0.10)
     amounts = {row["symbol"]: row["suggested_amount"] for row in recovered}
-    assert amounts["VGGF.DE"] == 4.91
+    assert amounts["VGGF.DE"] == 63.79 / 13.0
     assert amounts["VAGF.DE"] == 0.0
     assert [row["symbol"] for row in meta["selected"]] == ["VGGF.DE"]
 

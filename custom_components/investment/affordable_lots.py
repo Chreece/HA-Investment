@@ -133,7 +133,11 @@ def build_minimum_lot_trial(
         if metrics.get("suitability_eligible") is False:
             continue
         price = _number(row.get("portfolio_price") or row.get("price"))
-        lot_amount = round(price, 2)
+        # This is a purchase ceiling for one raw-priced unit, not display cash.
+        # Rounding down here (for example 4.914 -> 4.91) makes the final cost
+        # engine correctly reject that otherwise affordable whole unit. It
+        # owns conservative cent cash rounding and confirmed execution costs.
+        lot_amount = price
         if price <= 0.0 or lot_amount <= 0.0 or lot_amount > available + 0.005:
             continue
         sleeve = str(row.get("economic_sleeve") or "unknown")
@@ -233,6 +237,22 @@ def recover_affordable_minimum_lots(
     if not rows:
         return result
 
+    allocation = result.get("allocation") if isinstance(result.get("allocation"), dict) else {}
+    portfolio_risk = allocation.get("portfolio_risk")
+    # The core finalizer also checks global account/currency state after I/O.
+    # Those vetoes are not encoded in each candidate's market evidence, and a
+    # prior positive model weight is not permission to discard them. Recovery
+    # is only valid after a verified contribution-only result; missing or
+    # failed final validation must remain closed.
+    if (
+        not isinstance(portfolio_risk, dict)
+        or portfolio_risk.get("scope") != "new_contribution_only"
+        or portfolio_risk.get("status") != "within_limits"
+        or portfolio_risk.get("portfolio_snapshot_issue")
+        or portfolio_risk.get("ledger_changed_during_analysis") is True
+    ):
+        return result
+
     from .portfolio_plan import finalize_purchase_plan
     from .validated_model import (
         ECONOMIC_SLEEVE_CAPS,
@@ -241,7 +261,6 @@ def recover_affordable_minimum_lots(
         within_risk_target,
     )
 
-    allocation = result.get("allocation") if isinstance(result.get("allocation"), dict) else {}
     sleeve_caps = allocation.get("economic_sleeve_caps")
     if not isinstance(sleeve_caps, dict):
         sleeve_caps = dict(ECONOMIC_SLEEVE_CAPS.get(risk_tolerance) or {})
@@ -340,6 +359,17 @@ def recover_affordable_minimum_lots(
         "risk_rechecked": True,
         "execution_costs_rechecked": True,
     }
+    if result.get("ai_review") is not None:
+        # A deterministic-AI review describes the old plan. Full-AI mode is
+        # excluded above; do not present an old verdict as approval of these
+        # newly recovered quantities.
+        result["ai_review"] = None
+        override_meta["ai_review_invalidated"] = True
+        override_meta["ai_review_invalidation_reason"] = "purchase_plan_changed"
+
+    for field in ("portfolio_snapshot_issue", "ledger_changed_during_analysis"):
+        if field in portfolio_risk:
+            final_meta["portfolio_risk"][field] = portfolio_risk[field]
 
     result["results"] = final_rows
     merged_allocation = result.setdefault("allocation", {})

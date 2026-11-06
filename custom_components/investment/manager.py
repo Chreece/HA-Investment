@@ -1108,15 +1108,19 @@ class InvestmentManager:
         """Return current opt-in automation entity selections."""
         return await self.store.async_entity_exposure_snapshot()
 
-    async def async_portfolio_bootstrap(self, user_id: str) -> dict[str, Any]:
+    async def async_portfolio_bootstrap(
+        self, user_id: str, *, use_cache: bool = True
+    ) -> dict[str, Any]:
         """Return a network-free portfolio shell for immediate first paint.
 
         The stored transaction ledger is authoritative for holdings, quantities and
         provider locations. Market price/value/P&L fields deliberately stay unknown
         until the normal portfolio refresh completes in the background.
+        Ownership-only analysis bypasses the display cache so failed market
+        enrichment or an older quantity cannot determine instrument membership.
         """
         key = ("portfolio", user_id)
-        cached = self._cache.get(key, DEFAULT_QUOTE_CACHE_SECONDS)
+        cached = self._cache.get(key, DEFAULT_QUOTE_CACHE_SECONDS) if use_cache else None
         if cached is not None:
             cached["bootstrap_local"] = False
             return cached

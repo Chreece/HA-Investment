@@ -32,7 +32,7 @@ from .validated_model import (
     PORTFOLIO_WEEKLY_ES95_TARGET,
     RISK_TOLERANCE,
     _candidate_evidence_eligible,
-    risk_signature,
+    risk_signature_from_returns,
 )
 
 CONTRACT_VERSION = "complete-portfolio-confirmed-costs-v1"
@@ -86,7 +86,10 @@ def _snapshot(
             issues.extend(dated.get("issues") or ["portfolio_aligned_history_unavailable"])
         if require_drawdown and dated.get("history", {}).get("calendar_gap_count", 0):
             issues.append("portfolio_drawdown_calendar_gaps")
-        signature = risk_signature(weighted)
+        # Calendar/source validation above has already aligned these positions.
+        # Reuse that exact series; rebuilding all maps here doubled history
+        # work for every proportional and whole-unit trial.
+        signature = risk_signature_from_returns(dated["returns"])
         if any(_number(signature.get(key)) is None for key in _METRICS[:2]):
             issues.append("portfolio_aligned_history_unavailable")
         # Disconnected observations cannot establish a cumulative wealth path.
