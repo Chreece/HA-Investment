@@ -375,12 +375,15 @@ def validated_market_score(
     vol = max(0.0, _sf(metrics.get("annualized_volatility")))
     drawdown = abs(min(0.0, _sf(metrics.get("max_drawdown"))))
     r126 = metrics.get("return_126d")
-    carry = _annualize_half_year(r126)
+    # This frozen component annualizes a realized historical return. It is
+    # neither an observed yield nor forward carry; price appreciation can be
+    # part of the input. Keep its existing weighting until separately tested.
+    annualized_historical_return = _annualize_half_year(r126)
 
     if economic_sleeve == "cash_like":
         score = (
             52.0
-            + 14.0 * _clip((carry or 0.0) / 0.04)
+            + 14.0 * _clip((annualized_historical_return or 0.0) / 0.04)
             + 10.0 * _clip(1.0 - vol / 0.02)
             + 8.0 * _clip(1.0 - drawdown / 0.03)
             + 6.0 * confidence
@@ -389,7 +392,7 @@ def validated_market_score(
     elif economic_sleeve == "government_bond":
         score = (
             48.0
-            + 14.0 * _clip((carry or 0.0) / 0.05)
+            + 14.0 * _clip((annualized_historical_return or 0.0) / 0.05)
             + 10.0 * _clip(1.0 - vol / 0.08)
             + 8.0 * _clip(1.0 - drawdown / 0.15)
             + 8.0 * _clip(_sf(r126) / 0.08, -1.0, 1.0)
@@ -398,7 +401,7 @@ def validated_market_score(
     else:
         score = (
             46.0
-            + 12.0 * _clip((carry or 0.0) / 0.06)
+            + 12.0 * _clip((annualized_historical_return or 0.0) / 0.06)
             + 9.0 * _clip(1.0 - vol / 0.10)
             + 8.0 * _clip(1.0 - drawdown / 0.22)
             + 10.0 * _clip(_sf(r126) / 0.10, -1.0, 1.0)
