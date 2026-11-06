@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Fixed incognito history amount leaks, including summary values, axes, hover text and accessible labels; timed reveals remain available.
 ## 2026.10.13.1
 
 - Fixed wide-screen Home Assistant layouts so the Investments panel uses the full available content width instead of being capped at 1450 px.
