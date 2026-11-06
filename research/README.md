@@ -5,7 +5,81 @@ source data, a plan specified before the outcome study, and versioned results.
 Nothing in this directory is imported by the live Home Assistant integration.
 Research variants are **not automatically promoted to the recommendation model**.
 
-## Completed study
+## November contribution-only study
+
+The November suite uses the new-contribution numerical contract from
+`99c0e36cadd27439c1e2e78418bc601410f5547d`. Its
+[fixed plan](contribution_experiment_plan.json) compares nine deterministic
+policies in 21 scenarios (189 trials). The reference is the current unchanged
+scoring formula. The production change accompanying this study only renames
+the defensive score's annualized historical-return variable; it does not turn
+past returns into forward yield or change score weights.
+
+`contribution_validation.py` gives each decision only that month's new
+contribution. Old positions and unused money persist in the outcome ledger,
+but neither is automatically reoffered or included in allocation/risk sizing.
+Allowing purchases of already-owned assets is an **explicit study preference**;
+the live default owned-instrument exclusion has a separate control scenario.
+Other shared settings include the 45% instrument ceiling, 45% minimum data
+reliability, no extra cash reserve and diagnostic-only drawdown. The horizon is
+medium, with a calendar-year daily signal window rather than a fixed number of
+observations across both weekday funds and seven-day crypto markets.
+
+The candidate policies are the unchanged model, cash, an equal-sleeve control,
+a 1% all-in purchase-cost cap, a ten-completed-calendar-month moving-average
+control, separate RSI/reversal/defensive-return-bonus ablations, and an additional
+downward-only Ledoit-Wolf scaled-identity covariance cap. Simple controls do not
+inherit composite-score gates or score-based lot tie-breaks. The cost threshold
+is a declared policy choice, not an academic optimum. All failed experiments,
+ties and abstentions are retained; no historical winner is automatically promoted.
+
+The retained public EUR snapshot includes the original five accumulating funds
+and Bitcoin/Ethereum, with observations from 2015 where available through
+2026-11-05. The evaluation runs from August 2020 through November 2026, with a
+fixed chronological partition at the end of 2023. This is already known history
+from surviving instruments and a current data vintage, **not a prospective test**.
+No split or cash-distribution events were reported in the retained source.
+Historical broker fees, taxes, cash interest, intraday executable quotes and a
+delisted universe are unavailable. Crypto quotes are provider composites rather
+than a reconstructed brokerage venue. The fee scenarios are hypothetical and
+are never substituted for the user's live confirmed cost settings.
+
+Signals use only the completed previous calendar month. Contributions arrive at
+00:00 UTC on the first common observed execution date and issue performance
+units at the previous day's NAV. Hypothetical close-proxy execution is staged:
+Xetra at 17:30 Europe/Berlin, then crypto at 23:59:59 UTC. A later quote cannot
+alter an earlier fill. Each stage retains quote-approved unit and principal
+ceilings, cost accounting and the contribution risk constraints; earlier fills
+from the same contribution are immutable in subsequent stages. This provides a
+causal daily-data experiment, not a claim to reproduce intraday broker fills.
+
+From the repository root and tested source revision, choose a new output path:
+
+```bash
+python -m research.run_contribution_study freeze --run-dir research/results/my-contribution-study
+python -m research.run_contribution_study run --run-dir research/results/my-contribution-study --workers 2
+python -m research.audit_contribution_results --run-dir research/results/my-contribution-study --data research/data/eur-contribution-20261106.json
+```
+
+The freeze records the complete trial list, plan, model/research code hashes,
+original provider payload identities, and deduplicated scenario datasets before
+the comparison. Running the same command after an interruption resumes a verified
+ledger prefix; a failed trial is retained and is not silently retried. Rejected
+orphan-trace mismatches and source changes prevent a completion claim. The
+independent audit reconstructs cash, units, performance flows and execution
+constraints from source observations and retained trades.
+
+To check a retained run without evaluating strategies again:
+
+```bash
+python -m research.run_contribution_study verify --run-dir research/results/my-contribution-study
+```
+
+## October study — earlier full-portfolio contract
+
+The remaining sections document the preserved October experiment. Its use of
+old cash, full-portfolio risk and currency-budget fills differs from the current
+contribution-only study above; its evidence and previous failures remain intact.
 
 The final [verified readout](results/portfolio-robustness-20261006-v3/READOUT.md)
 explains the mixed outcomes, cost sensitivity, concentration-related abstention,
