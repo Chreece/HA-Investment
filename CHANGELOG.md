@@ -2,6 +2,10 @@
 
 ## Unreleased — 2026-11-06
 
+- Close the second audit's ownership gaps: verify personal units from transaction evidence, preserve ambiguous identities as unknown, and recheck selected candidates after all awaited work.
+- Move preference persistence before final account/source validation; retain currency, freshness, fee, reserve and risk vetoes across deterministic and AI modes.
+- Preserve malformed stored ledger evidence, distinguish real pre-ledger migration from an explicitly empty ledger, and explain ownership exclusions in every supported UI language.
+- Preserve raw whole-unit principal through Full AI ceilings and discrete risk checks so an affordable fractional-price unit is not lost to premature cent rounding.
 - Redact all history amounts, statistics, axes and hover/accessibility values in incognito; preserve deliberate timed reveals.
 - Preserve final account/currency safety vetoes through minimum-lot recovery, keep raw unit-price precision, and discard AI reviews of superseded purchase plans.
 - Make owned-instrument matching respect identifier and listing conflicts; use fresh local ownership instead of unrelated market enrichment.

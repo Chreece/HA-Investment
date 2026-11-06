@@ -223,21 +223,29 @@ def normalize_legacy_transaction(transaction: dict[str, Any]) -> bool:
     Returns True when the record was changed.
     """
     changed = False
-    if transaction.get("type") not in {"buy", "sell"}:
+    # Only genuinely absent legacy fields may be supplied. An explicitly
+    # unsupported type must reach the strict evidence validator unchanged.
+    if "type" not in transaction:
         transaction["type"] = "buy"
         changed = True
-    if not transaction.get("date"):
-        transaction["date"] = transaction_date(transaction)
-        changed = True
+    if "date" not in transaction:
+        try:
+            transaction["date"] = transaction_date(transaction)
+        except (TypeError, ValueError, OverflowError, OSError):
+            pass
+        else:
+            changed = True
     if transaction["type"] == "buy":
         if "shared_allocations" not in transaction:
             transaction["shared_allocations"] = []
             changed = True
         if "net_quantity" not in transaction:
-            transaction["net_quantity"] = float(transaction.get("quantity") or 0)
+            # Preserve invalid supplied types/values for evidence checks instead
+            # of coercing them or letting one corrupt record break every read.
+            transaction["net_quantity"] = transaction.get("quantity")
             changed = True
         if "gross_quantity" not in transaction:
-            transaction["gross_quantity"] = float(transaction.get("net_quantity") or transaction.get("quantity") or 0)
+            transaction["gross_quantity"] = transaction.get("net_quantity", transaction.get("quantity"))
             changed = True
     return changed
 

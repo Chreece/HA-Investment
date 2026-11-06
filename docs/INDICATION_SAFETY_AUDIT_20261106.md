@@ -85,21 +85,38 @@ These are promotion requirements, not a claim that a new prospective study has
 already been completed. No automatic trading, new model fitting or personal
 financial-data collection is introduced by this audit.
 
-## Remaining ownership-filter limitations
+## Second audit round — ownership and final validation
 
-Normal ownership checks now use a fresh local transaction ledger, but malformed
-FIFO records can still trigger the existing fallback to a persisted aggregate
-quantity. This audit does not establish verified ownership for corrupted
-records. A future change should represent that uncertainty explicitly rather
-than silently treating a fallback quantity as verified.
+The follow-up starts from merged revision
+`fbe003c6458a25ac774cdc1db9df4c7797a0e417`. It closes the two ownership-filter
+limitations recorded by the first round and examines the final asynchronous
+boundary in the shipped contribution manager.
 
-Owned-instrument membership is captured when analysis starts. In contribution-only
-scope, a concurrent Buy or Sell during a long analysis does not yet trigger a
-final per-candidate ownership recheck, so the exclusion filter can become stale.
-A targeted recheck before displaying final purchases would address this without
-bringing old-holdings market values or full-portfolio risk back into the decision.
-These are ownership-filter consistency limitations, not evidence that the new
-contribution's risk limits protect against all future losses.
+| Finding | Correction and evidence |
+| --- | --- |
+| Display FIFO and its aggregate fallback could decide whether an instrument was owned | A bounded, network-free ownership snapshot uses the existing strict transaction-quantity validator. Missing, invalid, future, oversold or ambiguously ordered records remain unknown. Complete sales and fully shared units establish zero personal ownership; every verified positive personal remainder counts as owned. |
+| A shared bare ticker with insufficient venue evidence could be treated as proof of nonownership | Exact identity now distinguishes matched, conflicting and ambiguous evidence. Unresolved shared aliases remain candidate-specific uncertainty. Explicit incompatible identifiers/listings remain nonmatches. |
+| Ownership could change during provider, AI or preference awaits | Selected candidates are checked against the final local account snapshot. A newly owned excluded candidate or a sold-out portfolio-source candidate produces a clear rerun error. Unrelated holding edits, partial sales that retain ownership and allow-owned analysis remain independent of old-holdings risk. |
+| Preference persistence occurred after the core's final currency and market-evidence checks | Persistence now runs before the final account read. The existing raw-source freshness and final purchase gates follow it without further asynchronous work. Regressions cover currency changes, evidence expiry and unavailable final reads across all three analysis modes. |
+| Storage normalization could turn an unsupported transaction type into a Buy or reconstruct an explicitly empty ledger from an aggregate | Only absent legacy fields may be supplied. Explicit invalid types, empty/malformed transaction collections and invalid quantity types remain available to strict validation. Real-store regressions exercise normalization, repeat reads and legacy migration. |
+| Full AI could lose affordable whole units by rounding their principal before a second discrete check | AI whole-unit ceilings retain raw price precision while the unchanged final cash-cost calculation still enforces fees, reserves and risk. Independent boundary checks cover a request just below one unit and production-path fractional-price examples. |
+
+The ownership filter reports unknown evidence separately from known ownership.
+Identifiable corruption affects the relevant candidate; it does not add an
+unrelated old holding to the contribution's risk calculation. Current-portfolio
+source candidates require verified positive personal units. No failed request
+automatically repeats a paid AI review.
+
+Legacy compatibility remains an input trust boundary: a valid numeric position
+from an old format with no transaction collection can still be migrated to its
+documented legacy Buy, and previously migrated records remain supported. Such
+records are user-provided historical data, not independently verified broker
+statements. The new checks do not reconstruct missing real-world transactions
+or certify the original truth of a user's entries.
+
+The final snapshot describes the account at analysis completion. A later edit
+or market change requires a new analysis; these checks do not place or lock
+trades. Predictive-model promotion requirements above remain open and unchanged.
 
 ## Verification boundary
 

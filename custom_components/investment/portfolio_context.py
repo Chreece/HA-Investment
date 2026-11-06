@@ -122,14 +122,14 @@ def _holding_order(asset: dict[str, Any]) -> tuple[str, ...]:
     ))
 
 
-def _identity_alias_matches(
+def _identity_alias_relation(
     asset: dict[str, Any], holding: dict[str, Any], token: str,
-) -> bool:
-    """Accept strong identity or an uncontradicted exact listing fallback."""
+) -> str:
+    """Distinguish positive identity, explicit conflict, and missing evidence."""
     for key in _INSTRUMENT_ID_FIELDS:
         left, right = _clean(asset.get(key)).upper(), _clean(holding.get(key)).upper()
         if left and right and left != right:
-            return False
+            return "conflicting"
 
     kind = token.partition(":")[0]
     if kind in _INSTRUMENT_ID_FIELDS:
@@ -137,48 +137,51 @@ def _identity_alias_matches(
         # one quote currency and have a different venue-level FIGI.  Those
         # listing differences do not negate an agreed instrument/share-class
         # ID, but contradictory instrument/share-class assertions do.
-        return True
+        return "matched"
     figi, held_figi = _clean(asset.get("figi")).upper(), _clean(holding.get("figi")).upper()
     if figi and held_figi and figi != held_figi:
-        return False
+        return "conflicting"
     if kind == "figi":
-        return True
+        return "matched"
 
     category = _clean(asset.get("category") or "other").lower()
     held_category = _clean(holding.get("category") or "other").lower()
     if category != "other" and held_category != "other" and category != held_category:
-        return False
+        return "conflicting"
     symbol = _symbol(asset.get("symbol"), category)
     held_symbol = _symbol(holding.get("symbol"), held_category)
     if symbol and held_symbol and symbol != held_symbol:
-        return False
+        return "conflicting"
     exchange, held_exchange = _exchange(asset.get("exchange")), _exchange(holding.get("exchange"))
     if exchange and held_exchange and exchange != held_exchange:
-        return False
+        return "conflicting"
     currency, held_currency = _quote_currency(asset), _quote_currency(holding)
     if currency and held_currency and currency != held_currency:
-        return False
+        return "conflicting"
 
     if kind in {"provider", "listing"}:
-        return True
+        return "matched"
     if kind != "symbol":
-        return False
+        return "conflicting"
     if exchange and held_exchange:
-        return True
+        return "matched"
     # Bare ticker symbols are not unique across venues/providers.  Retain the
     # supported cross-provider qualified-listing fallback (e.g. EUNL.DE).
     qualified = _symbol(asset.get("symbol") or asset.get("provider_id"), category)
     root, separator, suffix = qualified.rpartition(".")
-    return category in {"stock", "etf", "fund"} and bool(
-        root and separator and suffix in _LISTING_SUFFIXES
-    )
+    if category in {"stock", "etf", "fund"} and root and separator and suffix in _LISTING_SUFFIXES:
+        return "matched"
+    # A shared bare ticker without its venue cannot certify either sameness or
+    # difference. Exact-match callers still reject it; ownership exclusion also
+    # needs to know that the rejection did not prove candidate absence.
+    return "ambiguous"
 
 
-def find_owned_match(
+def _find_identity_relation(
     asset: dict[str, Any],
     owned_index: OwnedIdentityIndex | dict[str, dict[str, Any]] | None,
+    relation: str,
 ) -> dict[str, Any] | None:
-    """Match exact identity in deterministic order, never contradicting IDs."""
     if not owned_index:
         return None
     for token in sorted(instrument_identity_tokens(asset), key=_token_order):
@@ -187,9 +190,25 @@ def find_owned_match(
         if isinstance(matches, dict):
             matches = [matches]
         for match in sorted(matches, key=_holding_order):
-            if _identity_alias_matches(asset, match, token):
+            if _identity_alias_relation(asset, match, token) == relation:
                 return match
     return None
+
+
+def find_owned_match(
+    asset: dict[str, Any],
+    owned_index: OwnedIdentityIndex | dict[str, dict[str, Any]] | None,
+) -> dict[str, Any] | None:
+    """Match exact identity in deterministic order, never contradicting IDs."""
+    return _find_identity_relation(asset, owned_index, "matched")
+
+
+def find_ambiguous_identity_match(
+    asset: dict[str, Any],
+    owned_index: OwnedIdentityIndex | dict[str, dict[str, Any]] | None,
+) -> dict[str, Any] | None:
+    """Find a shared alias lacking enough evidence to establish either outcome."""
+    return _find_identity_relation(asset, owned_index, "ambiguous")
 
 
 def _contains_any(text: str, words: tuple[str, ...]) -> bool:

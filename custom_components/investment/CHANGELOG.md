@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Close the second audit's ownership gaps with strict transaction evidence, explicit identity uncertainty and final per-candidate ownership checks.
+- Complete preference persistence before final currency, source-freshness and purchase validation; preserve all safety vetoes in deterministic and AI modes.
+- Preserve malformed ledger records for validation, keep valid pre-ledger migration, and explain ownership exclusions in all supported UI languages.
+- Keep raw whole-unit principal through Full AI ceilings and discrete risk checks while preserving fees, reserves and final risk limits.
 - Fixed incognito history amount leaks, including summary values, axes, hover text and accessible labels; timed reveals remain available.
 - Hardened contribution-only minimum-lot recovery against final account/currency vetoes and premature unit-price rounding; stale AI plan reviews are discarded.
 - Corrected ambiguous owned-instrument matches and removed unnecessary old-holdings market enrichment and duplicate risk-history alignment.

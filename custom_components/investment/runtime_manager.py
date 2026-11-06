@@ -3,12 +3,15 @@ from __future__ import annotations
 
 from contextvars import ContextVar
 from copy import deepcopy
+from datetime import UTC, datetime
+import logging
 from typing import Any, Callable
 
+from . import manager as core_manager
+from .indication_ownership import build_ownership_snapshot, candidate_ownership_evidence
 from .manager import InvestmentManager as CoreInvestmentManager
 from .portfolio_context import (
     OwnedIdentityIndex,
-    build_owned_identity_index,
     context_score_fields,
     exposure_profile,
     find_owned_match,
@@ -17,7 +20,10 @@ from .portfolio_context import (
 _PORTFOLIO_CONTEXT: ContextVar[str] = ContextVar("investment_portfolio_context", default="use")
 _EXISTING_POLICY: ContextVar[str] = ContextVar("investment_existing_policy", default="allow")
 _OWNED_INDEX: ContextVar[OwnedIdentityIndex | None] = ContextVar("investment_owned_index", default=None)
-_FILTER_STATS: ContextVar[dict[str, int] | None] = ContextVar("investment_filter_stats", default=None)
+_OWNERSHIP_SNAPSHOT: ContextVar[dict[str, Any] | None] = ContextVar("investment_ownership_snapshot", default=None)
+_FINAL_ACCOUNT: ContextVar[dict[str, Any] | None] = ContextVar("investment_final_account", default=None)
+_FILTER_STATS: ContextVar[dict[str, Any] | None] = ContextVar("investment_filter_stats", default=None)
+_LOGGER = logging.getLogger(__name__)
 
 _EXTRA_DEFAULTS = {
     "portfolio_context": "use",
@@ -95,17 +101,82 @@ class InvestmentManager(CoreInvestmentManager):
             return await super().async_portfolio(
                 user_id, force=force, refresh_market=refresh_market
             )
-        # Contribution-only scoring needs no prices or FX for old holdings.
-        # The core clears its display cache before this call, so enriching the
-        # portfolio here would repeat network work solely to discard it below.
-        portfolio = await super().async_portfolio_bootstrap(user_id, use_cache=False)
-        neutral = deepcopy(portfolio)
-        neutral["holdings"] = []
-        neutral["categories"] = []
-        neutral["total"] = 0.0
-        neutral["today_change"] = 0.0
-        neutral["today_pct"] = None
-        return neutral
+        # The core reads account preferences separately. Contribution-only
+        # scoring needs neither old-holdings prices/FX nor display FIFO rows;
+        # malformed unrelated ledgers must not prevent a neutral risk scope.
+        return {
+            "holdings": [], "categories": [], "total": 0.0,
+            "today_change": 0.0, "today_pct": None,
+        }
+
+    @staticmethod
+    def _ownership_snapshot(holdings: Any) -> dict[str, Any]:
+        """Use the same clock and HA calendar as the final quantity gate."""
+        return build_ownership_snapshot(
+            holdings,
+            as_of=datetime.fromtimestamp(
+                core_manager.time.time(), core_manager.dt_util.now().tzinfo or UTC
+            ),
+        )
+
+    async def _async_indication_final_account_snapshot(self, user_id: str) -> dict[str, Any]:
+        current_user = await super()._async_indication_final_account_snapshot(user_id)
+        # Request-local capture lets the outer wrappers enforce exact ownership
+        # without another await after the core's final evidence/risk checks.
+        _FINAL_ACCOUNT.set(deepcopy(current_user))
+        return current_user
+
+    @staticmethod
+    def _account_snapshot_vetoed(result: dict[str, Any]) -> bool:
+        risk = (result.get("allocation") or {}).get("portfolio_risk") or {}
+        return bool(risk.get("portfolio_snapshot_issue"))
+
+    def _finalize_indication_ownership(
+        self, result: dict[str, Any], snapshot: dict[str, Any], *, existing_instruments: str
+    ) -> None:
+        """Check only the selected candidates against the final local ledger."""
+        account_vetoed = self._account_snapshot_vetoed(result)
+        for item in result.get("results") or []:
+            evidence = candidate_ownership_evidence(item, snapshot)
+            status = evidence["status"]
+            item["already_owned"] = status == "owned" if status != "unknown" else None
+            item["ownership_evidence"] = {
+                key: evidence.get(key) for key in ("status", "reasons", "holding_id")
+            }
+            # Preserve the core's explicit, closed account-snapshot result.
+            # Otherwise exclusion cannot certify a candidate from an obsolete
+            # snapshot, even when its current allocation happens to be zero.
+            if existing_instruments == "exclude" and status != "not_owned" and not account_vetoed:
+                raise ValueError(
+                    "Candidate ownership changed or could not be verified during analysis. "
+                    "Check the transaction records and run the analysis again."
+                )
+
+    @staticmethod
+    def _exclude_owned_candidate(
+        asset: dict[str, Any], snapshot: dict[str, Any] | None,
+        *, stats: dict[str, Any] | None = None,
+    ) -> bool:
+        evidence = candidate_ownership_evidence(asset, snapshot)
+        if evidence["status"] == "not_owned":
+            return False
+        if stats is None:
+            stats = _FILTER_STATS.get()
+        if stats is not None:
+            if evidence["status"] == "owned":
+                stats["existing"] = int(stats.get("existing", 0)) + 1
+            else:
+                stats["unknown"] = int(stats.get("unknown", 0)) + 1
+                stats.setdefault("unknown_candidates", []).append({
+                    key: asset.get(key) for key in
+                    ("provider", "provider_id", "symbol", "name", "category")
+                } | {
+                    "reason": "ownership_unverified",
+                    "ownership_evidence": {
+                        key: evidence.get(key) for key in ("status", "reasons", "holding_id")
+                    },
+                })
+        return True
 
     async def _candidate_portfolio_overlap(
         self,
@@ -158,14 +229,18 @@ class InvestmentManager(CoreInvestmentManager):
             # available for analysis-only inspection.
             if category is None and not bool(exposure_profile(row)["allocatable_default"]):
                 continue
-            if _EXISTING_POLICY.get() == "exclude" and find_owned_match(row, _OWNED_INDEX.get()) is not None:
-                stats = _FILTER_STATS.get()
-                if stats is not None:
-                    stats["existing"] = int(stats.get("existing", 0)) + 1
+            if _EXISTING_POLICY.get() == "exclude" and self._exclude_owned_candidate(
+                row, _OWNERSHIP_SNAPSHOT.get()
+            ):
                 continue
             unique.append(row)
             if len(unique) >= 20:
                 break
+        if not unique and (_FILTER_STATS.get() or {}).get("unknown"):
+            raise ValueError(
+                "Candidate ownership could not be verified from the transaction records. "
+                "Check those records and run the analysis again."
+            )
         return unique, pool_size
 
     async def async_indication(
@@ -216,30 +291,40 @@ class InvestmentManager(CoreInvestmentManager):
                 progress_callback(3, "starting", None)
             except Exception as err:
                 _LOGGER.debug("Investment indication runtime progress callback failed: %s", err)
-        actual_portfolio = (
-            await super().async_portfolio_bootstrap(user_id, use_cache=False)
-            if portfolio_context == "ignore"
-            else await super().async_portfolio(user_id)
-        )
-        actual_holdings = list(actual_portfolio.get("holdings") or [])
-        owned_index = build_owned_identity_index(actual_holdings)
-        stats = {"existing": 0}
+        if existing_instruments == "exclude" or portfolio_context == "use":
+            current_user = await self.store.async_user(user_id)
+            ownership_snapshot = self._ownership_snapshot(current_user.get("holdings"))
+        else:
+            # No initial old-holdings work is needed when ownership cannot
+            # filter or influence this run. The final badge still uses the
+            # verified final ledger rather than an inferred empty portfolio.
+            ownership_snapshot = self._ownership_snapshot([])
+        owned_index = ownership_snapshot["owned_index"]
+        stats = {"existing": 0, "unknown": 0, "unknown_candidates": []}
 
         forwarded_candidates = list(candidates or [])
         if resolved_scope == "search" and existing_instruments == "exclude":
             filtered: list[dict[str, Any]] = []
             for row in forwarded_candidates:
-                if find_owned_match(row, owned_index) is not None:
-                    stats["existing"] += 1
+                if not isinstance(row, dict):
+                    continue
+                if self._exclude_owned_candidate(row, ownership_snapshot, stats=stats):
                     continue
                 filtered.append(row)
             forwarded_candidates = filtered
             if not forwarded_candidates:
+                if stats["unknown"]:
+                    raise ValueError(
+                        "Candidate ownership could not be verified from the transaction records. "
+                        "Check those records and run the analysis again."
+                    )
                 raise ValueError("No new instruments remain in the current candidate set")
 
         context_token = _PORTFOLIO_CONTEXT.set(portfolio_context)
         existing_token = _EXISTING_POLICY.set(existing_instruments)
         owned_token = _OWNED_INDEX.set(owned_index)
+        ownership_token = _OWNERSHIP_SNAPSHOT.set(ownership_snapshot)
+        final_account_token = _FINAL_ACCOUNT.set(None)
         stats_token = _FILTER_STATS.set(stats)
         try:
             result = await super().async_indication(
@@ -270,8 +355,11 @@ class InvestmentManager(CoreInvestmentManager):
                 response_language=response_language,
                 progress_callback=progress_callback,
             )
+            final_user = _FINAL_ACCOUNT.get()
         finally:
             _FILTER_STATS.reset(stats_token)
+            _FINAL_ACCOUNT.reset(final_account_token)
+            _OWNERSHIP_SNAPSHOT.reset(ownership_token)
             _OWNED_INDEX.reset(owned_token)
             _EXISTING_POLICY.reset(existing_token)
             _PORTFOLIO_CONTEXT.reset(context_token)
@@ -285,7 +373,17 @@ class InvestmentManager(CoreInvestmentManager):
                 )
             item.update(profile)
             item.update(context_score_fields(item))
-            item["already_owned"] = find_owned_match(item, owned_index) is not None
+
+        final_snapshot = self._ownership_snapshot(
+            final_user.get("holdings") if isinstance(final_user, dict) else None
+        )
+        self._finalize_indication_ownership(
+            result, final_snapshot, existing_instruments=existing_instruments
+        )
+        unknown_candidates = stats["unknown_candidates"]
+        if unknown_candidates:
+            result.setdefault("excluded_candidates", []).extend(unknown_candidates)
+            result["excluded_candidate_count"] = len(result["excluded_candidates"])
 
         preferences = result.setdefault("preferences", {})
         preferences["portfolio_context"] = portfolio_context
@@ -293,4 +391,5 @@ class InvestmentManager(CoreInvestmentManager):
         result["portfolio_context"] = portfolio_context
         result["existing_instruments"] = existing_instruments
         result["existing_filtered_count"] = int(stats.get("existing", 0))
+        result["ownership_unverified_filtered_count"] = int(stats.get("unknown", 0))
         return result

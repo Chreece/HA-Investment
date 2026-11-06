@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import math
 import time
 from copy import deepcopy
 from datetime import UTC, datetime
@@ -178,24 +179,58 @@ class InvestmentStore:
         if "category_expenses" not in user:
             user["category_expenses"] = {}
             changed = True
+        # Keep malformed containers visible to strict ownership validation. A
+        # damaged unrelated record must not be silently repaired or prevent a
+        # network-free account read for contribution-only analysis.
+        if not isinstance(user["holdings"], list):
+            return changed
         for holding in user["holdings"]:
+            if not isinstance(holding, dict):
+                continue
             legacy_holding_provider_id = str(holding.get("holding_provider_id") or "").strip()[:80]
-            holding_currency = canonical_currency(holding.get("currency") or user.get("base_currency") or DEFAULT_BASE_CURRENCY)
-            if holding.get("currency") != holding_currency:
+            raw_holding_currency = holding.get("currency")
+            valid_holding_currency = isinstance(raw_holding_currency, str) and bool(raw_holding_currency.strip())
+            holding_currency = canonical_currency(
+                raw_holding_currency if valid_holding_currency
+                else user.get("base_currency") or DEFAULT_BASE_CURRENCY
+            )
+            # Do not turn an invalid supplied identity field into a plausible
+            # string that can contradict a candidate and certify nonownership.
+            if ("currency" not in holding or valid_holding_currency) and holding.get("currency") != holding_currency:
                 holding["currency"] = holding_currency
                 changed = True
             if "average_buy_price" not in holding:
                 holding["average_buy_price"] = None
                 changed = True
-            if "transactions" not in holding:
+            legacy_without_ledger = "transactions" not in holding
+            if legacy_without_ledger:
                 holding["transactions"] = []
                 changed = True
             transactions = holding["transactions"]
-            if not transactions and float(holding.get("quantity") or 0) > 0:
+            if not isinstance(transactions, list):
+                continue
+            legacy_quantity = holding.get("quantity")
+            valid_legacy_quantity = False
+            if isinstance(legacy_quantity, (int, float)) and not isinstance(legacy_quantity, bool):
+                try:
+                    valid_legacy_quantity = math.isfinite(float(legacy_quantity)) and legacy_quantity > 0
+                except (TypeError, ValueError, OverflowError):
+                    pass
+            if legacy_without_ledger and valid_legacy_quantity:
                 # Legacy pre-ledger holding: preserve it as one historical BUY.
                 created = int(time.time())
                 quantity = float(holding.get("quantity") or 0)
                 avg = holding.get("average_buy_price")
+                legacy_price = None
+                if isinstance(avg, (int, float)) and not isinstance(avg, bool):
+                    try:
+                        if math.isfinite(float(avg)) and avg >= 0:
+                            legacy_price = float(avg)
+                    except (TypeError, ValueError, OverflowError):
+                        pass
+                legacy_total = legacy_price * quantity if legacy_price is not None else None
+                if legacy_total is not None:
+                    legacy_total = round(legacy_total, 2) if math.isfinite(legacy_total) else None
                 transactions.append(
                     {
                         "id": uuid4().hex,
@@ -207,12 +242,12 @@ class InvestmentStore:
                         "gross_quantity": quantity,
                         "asset_fee_quantity": 0.0,
                         "asset_fee_percent": 0.0,
-                        "buy_price": avg,
-                        "gross_trade_total": (round(float(avg) * quantity, 2) if avg is not None else None),
-                        "investment_total": (round(float(avg) * quantity, 2) if avg is not None else None),
+                        "buy_price": legacy_price,
+                        "gross_trade_total": legacy_total,
+                        "investment_total": legacy_total,
                         "costs": {},
                         "cost_total": 0.0,
-                        "all_in_total": (round(float(avg) * quantity, 2) if avg is not None else None),
+                        "all_in_total": legacy_total,
                         "fee_currency": holding.get("currency") or user.get("base_currency"),
                         "note": "Legacy position imported during ledger migration",
                         "legacy": True,
@@ -220,6 +255,8 @@ class InvestmentStore:
                 )
                 changed = True
             for transaction in transactions:
+                if not isinstance(transaction, dict):
+                    continue
                 changed = normalize_legacy_transaction(transaction) or changed
                 if str(transaction.get("type") or "buy") == "buy":
                     transaction_provider_id = str(
