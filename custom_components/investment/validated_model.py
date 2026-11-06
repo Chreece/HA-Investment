@@ -19,6 +19,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 import datetime as dt
+from decimal import Decimal, ROUND_FLOOR, localcontext
 import math
 import re
 import statistics
@@ -1444,6 +1445,35 @@ def global_whole_lot_projection(
     }
 
 
+def _whole_units_within_raw_principal(ceiling: float, price: float) -> tuple[float, float]:
+    """Keep whole units inside an exact incoming principal ceiling.
+
+    Cent rounding belongs to the cash-cost gate. Rounding marked principal
+    before another lot check can lose a unit; rounding it up can enlarge the
+    caller's authority. Decimal sizing and the least covering float preserve
+    the same raw-price convention as the execution-cost engine.
+    """
+    if ceiling <= 0.0 or price <= 0.0:
+        return 0.0, 0.0
+    with localcontext() as context:
+        # Cover the full finite binary64 range, including a very small price.
+        context.prec = 720
+        raw_price = Decimal(str(price))
+        units_exact = (Decimal(str(ceiling)) / raw_price).to_integral_value(rounding=ROUND_FLOOR)
+        units = float(units_exact)
+        if not math.isfinite(units):
+            return 0.0, 0.0
+        if Decimal(str(units)) > units_exact:
+            units = math.nextafter(units, 0.0)
+        principal = Decimal(str(units)) * raw_price
+        amount = float(principal)
+        if Decimal(str(amount)) < principal:
+            amount = math.nextafter(amount, math.inf)
+        if amount > ceiling:
+            raise AssertionError("Whole-unit principal exceeded its incoming ceiling")
+        return units, amount
+
+
 def enforce_discrete_risk_contract(
     results: list[dict[str, Any]],
     risk: str,
@@ -1453,6 +1483,7 @@ def enforce_discrete_risk_contract(
     units_key: str = "suggested_units",
     whole_units_only: bool = False,
     whole_unit_categories: Iterable[str] | None = None,
+    preserve_whole_unit_principal: bool = False,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     """Verify money/lot output and reduce it if discretisation breaks risk.
 
@@ -1485,7 +1516,10 @@ def enforce_discrete_risk_contract(
             price = _sf(item.get("portfolio_price") or item.get("price"))
             require_whole = _whole_unit_required(item, whole_units_only, whole_categories)
             item["whole_units_only"] = require_whole
-            if require_whole and price > 0:
+            if require_whole and price > 0 and preserve_whole_unit_principal:
+                units, amount = _whole_units_within_raw_principal(ceiling, price)
+                item[units_key] = units
+            elif require_whole and price > 0:
                 units = int(math.floor(ceiling / price + 1e-12))
                 amount = round(units * price, 2)
                 while units > 0 and amount > ceiling + 0.005:
@@ -1736,9 +1770,8 @@ def clamp_ai_ranking_to_deterministic(
             require_whole = _whole_unit_required(item, whole_units_only, whole_categories)
             item["whole_units_only"] = require_whole
             if require_whole and price > 0:
-                units = int(math.floor(suggested / price + 1e-12))
-                suggested = round(units * price, 2)
-                item["ai_suggested_units"] = float(units)
+                units, suggested = _whole_units_within_raw_principal(suggested, price)
+                item["ai_suggested_units"] = units
             else:
                 item["ai_suggested_units"] = suggested / price if price > 0 else 0.0
             item["ai_suggested_amount"] = suggested
@@ -1761,6 +1794,7 @@ def clamp_ai_ranking_to_deterministic(
         units_key="ai_suggested_units",
         whole_units_only=whole_units_only,
         whole_unit_categories=whole_categories,
+        preserve_whole_unit_principal=True,
     )
     results[:] = guarded
     for item in results:

@@ -672,6 +672,38 @@ const INDICATION_EVIDENCE_I18N = {
 };
 for (const [lang, values] of Object.entries(INDICATION_EVIDENCE_I18N)) Object.assign(I18N[lang] || I18N.en, values);
 
+const OWNERSHIP_EVIDENCE_I18N = {
+  en:{"ownershipUnverified":"Ownership could not be verified. Check this instrument’s details and transactions."},
+  de:{"ownershipUnverified":"Der Bestand konnte nicht bestätigt werden. Prüfe die Angaben und Transaktionen dieser Anlage."},
+  el:{"ownershipUnverified":"Δεν επιβεβαιώθηκε αν κατέχεις την επένδυση. Έλεγξε τα στοιχεία και τις συναλλαγές της."},
+  fr:{"ownershipUnverified":"La détention n’a pas pu être vérifiée. Vérifiez les informations et les transactions de cet instrument."},
+  es:{"ownershipUnverified":"No se pudo verificar la tenencia. Revisa los datos y las operaciones de este instrumento."},
+  it:{"ownershipUnverified":"Non è stato possibile verificare il possesso. Controlla i dati e le operazioni di questo strumento."},
+  pt:{"ownershipUnverified":"Não foi possível verificar a titularidade. Verifica os dados e as transações deste instrumento."},
+  nl:{"ownershipUnverified":"Het bezit kon niet worden bevestigd. Controleer de gegevens en transacties van dit instrument."},
+  pl:{"ownershipUnverified":"Nie udało się potwierdzić posiadania. Sprawdź dane i transakcje tego instrumentu."},
+  tr:{"ownershipUnverified":"Sahiplik doğrulanamadı. Bu aracın bilgilerini ve işlemlerini kontrol edin."},
+  ru:{"ownershipUnverified":"Не удалось подтвердить владение. Проверьте данные и операции по этому инструменту."},
+  uk:{"ownershipUnverified":"Не вдалося підтвердити володіння. Перевірте дані й операції за цим інструментом."},
+  cs:{"ownershipUnverified":"Držení se nepodařilo ověřit. Zkontrolujte údaje a transakce tohoto nástroje."},
+  hu:{"ownershipUnverified":"A tulajdonlás nem ellenőrizhető. Ellenőrizd az eszköz adatait és tranzakcióit."},
+  ro:{"ownershipUnverified":"Deținerea nu a putut fi verificată. Verifică datele și tranzacțiile acestui instrument."},
+  sv:{"ownershipUnverified":"Innehavet kunde inte verifieras. Kontrollera uppgifterna och transaktionerna för detta instrument."},
+  da:{"ownershipUnverified":"Beholdningen kunne ikke bekræftes. Kontrollér oplysninger og transaktioner for dette instrument."},
+  fi:{"ownershipUnverified":"Omistusta ei voitu vahvistaa. Tarkista tämän sijoituskohteen tiedot ja tapahtumat."},
+  no:{"ownershipUnverified":"Beholdningen kunne ikke bekreftes. Kontroller opplysningene og transaksjonene for dette instrumentet."},
+  ja:{"ownershipUnverified":"保有状況を確認できませんでした。この商品の情報と取引を確認してください。"},
+  ko:{"ownershipUnverified":"보유 여부를 확인할 수 없습니다. 이 상품의 정보와 거래 내역을 확인하세요."},
+  zh:{"ownershipUnverified":"无法确认持有情况。请检查此投资产品的信息和交易记录。"},
+  ar:{"ownershipUnverified":"تعذر التحقق من الملكية. راجع بيانات هذه الأداة ومعاملاتها."},
+  bg:{"ownershipUnverified":"Притежанието не може да бъде потвърдено. Провери данните и сделките за този инструмент."},
+  sk:{"ownershipUnverified":"Držbu sa nepodarilo overiť. Skontrolujte údaje a transakcie tohto nástroja."},
+  he:{"ownershipUnverified":"לא ניתן לאמת את ההחזקה. יש לבדוק את פרטי הנכס ואת העסקאות שלו."},
+  hi:{"ownershipUnverified":"स्वामित्व की पुष्टि नहीं हो सकी। इस निवेश साधन का विवरण और लेन-देन जाँचें।"},
+  id:{"ownershipUnverified":"Kepemilikan tidak dapat diverifikasi. Periksa detail dan transaksi instrumen ini."}
+};
+for(const [lang,values] of Object.entries(OWNERSHIP_EVIDENCE_I18N)) Object.assign(I18N[lang]||I18N.en,values);
+
 const INDICATION_PROGRESS_I18N = {
   en:{title:"Analysis in progress",starting:"Starting analysis…",portfolio_context:"Reading your portfolio settings…",candidate_search:"Finding investments to compare…",candidate_checks:"Checking which investments can be analysed…",market_history:"Loading and checking market history…",scoring:"Comparing historical behaviour…",risk_allocation:"Applying your risk and diversification limits…",ai_review:"Running the AI review…",finalizing:"Preparing your results…",complete:"Analysis complete",checked:"checked"},
   de:{title:"Analyse läuft",starting:"Analyse wird gestartet…",portfolio_context:"Portfolioeinstellungen werden gelesen…",candidate_search:"Vergleichbare Anlagen werden gesucht…",candidate_checks:"Prüfe, welche Anlagen analysiert werden können…",market_history:"Markthistorie wird geladen und geprüft…",scoring:"Historisches Verhalten wird verglichen…",risk_allocation:"Risiko- und Diversifikationsgrenzen werden angewendet…",ai_review:"AI-Prüfung läuft…",finalizing:"Ergebnisse werden vorbereitet…",complete:"Analyse abgeschlossen",checked:"geprüft"},
@@ -2066,6 +2098,7 @@ class InvestmentPanel extends HTMLElement {
   }
   indicationEvidenceReasonKey(value){
     const code=String(value||"");
+    if(code.startsWith("ownership_")||code.startsWith("position_ledger_"))return "ownershipUnverified";
     if(code==="execution_costs_unknown")return "costsUnknown";
     if(code.startsWith("execution_"))return "purchaseUnavailable";
     if(/^(portfolio_risk_|portfolio_limit:|portfolio_(value|aligned_history|drawdown|economic_exposure)_|existing_(position|portfolio|quantity)_)/.test(code))return "riskStatusBlocked";

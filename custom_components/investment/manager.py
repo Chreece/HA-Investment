@@ -2759,6 +2759,17 @@ class InvestmentManager:
             selected = balanced_discovery_sample(buckets, categories, limit=20)
         return selected, pool_size
 
+    async def _async_indication_final_account_snapshot(
+        self, user_id: str
+    ) -> dict[str, Any]:
+        """Read account state after all request-specific asynchronous work.
+
+        Runtime extensions may finish preference persistence before this read.
+        Source evidence and the final purchase plan are then checked without
+        yielding, so an outer wrapper must not reopen the validated snapshot.
+        """
+        return await self.store.async_user(user_id)
+
     async def async_indication(
         self,
         user_id: str,
@@ -3777,7 +3788,7 @@ class InvestmentManager:
 
         emit_progress(98, "finalizing")
         try:
-            current_user = await self.store.async_user(user_id)
+            current_user = await self._async_indication_final_account_snapshot(user_id)
             if self._canonical_currency(current_user.get("base_currency") or "EUR") != base:
                 ledger_changed_during_analysis = True
                 portfolio_snapshot_issue = "portfolio_currency_changed_during_analysis"
