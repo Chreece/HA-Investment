@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased — 2026-11-06
+
+- Redact all history amounts, statistics, axes and hover/accessibility values in incognito; preserve deliberate timed reveals and remask on refresh, zoom and metric changes.
+- Add behavioral history privacy regression tests and refresh the panel asset revision.
+
 ## 2026.10.13.2
 
 - Made privacy controls fully optional. They are disabled by default for new/default users, while existing users who already used privacy mode retain their preference safely.
