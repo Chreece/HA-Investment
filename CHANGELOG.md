@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased — 2026-11-06
+
+- Redact all history amounts, statistics, axes and hover/accessibility values in incognito; preserve deliberate timed reveals.
+- Preserve final account/currency safety vetoes through minimum-lot recovery, keep raw unit-price precision, and discard AI reviews of superseded purchase plans.
+- Make owned-instrument matching respect identifier and listing conflicts; use fresh local ownership instead of unrelated market enrichment.
+- Reuse dated aligned returns in risk checks without changing score formulas or risk targets. See [audit scope and scientific limits](docs/INDICATION_SAFETY_AUDIT_20261106.md).
+
 ## 2026.10.13.2b1 — indications
 
 - Synced the indications branch with the current production panel lifecycle fixes from the 2026.10.13.2 main release.

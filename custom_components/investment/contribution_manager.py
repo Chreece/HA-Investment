@@ -51,7 +51,7 @@ class InvestmentManager(PortfolioRuntimeManager):
             # future purchases", not "make the old portfolio satisfy the newly
             # selected risk profile". Feed the owned instruments as an explicit
             # candidate set while keeping the risk scope contribution-only.
-            portfolio = await super().async_portfolio(user_id)
+            portfolio = await super().async_portfolio_bootstrap(user_id, use_cache=False)
             holdings = list(portfolio.get("holdings") or [])
             core_scope = "search"
             core_candidates = [

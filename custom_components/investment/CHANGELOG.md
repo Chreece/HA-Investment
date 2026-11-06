@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Fixed incognito history amount leaks, including summary values, axes, hover text and accessible labels; timed reveals remain available.
+- Hardened contribution-only minimum-lot recovery against final account/currency vetoes and premature unit-price rounding; stale AI plan reviews are discarded.
+- Corrected ambiguous owned-instrument matches and removed unnecessary old-holdings market enrichment and duplicate risk-history alignment.
 - Added canonical lot-based BUY/SELL accounting with exact transaction timestamps, FIFO lot consumption, and separate realized/unrealized P/L.
 - Added holding providers/locations per BUY lot, allowing one asset to remain split across multiple brokers, exchanges, wallets or apps; provider balances are derived from the canonical ledger.
 - Added portfolio analytics for allocation by category, holding provider and trading currency, plus monthly BUY outflow, SELL inflow and net cash flow.

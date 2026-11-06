@@ -772,7 +772,20 @@ def path_max_drawdown_loss(returns: list[float]) -> float | None:
 
 
 def risk_signature(weighted: Iterable[tuple[dict[str, Any], float]]) -> dict[str, Any]:
-    returns = portfolio_weekly_returns(weighted)
+    return risk_signature_from_returns(portfolio_weekly_returns(weighted))
+
+
+def risk_signature_from_returns(returns: list[float] | tuple[float, ...]) -> dict[str, Any]:
+    """Compute the unchanged risk statistics from an already aligned series.
+
+    This validates numeric observations only. Source dates, common-history
+    alignment and freshness remain the caller's responsibility. The dated final
+    purchase gate can reuse its validated series without rebuilding every
+    position's return map during each candidate-plan evaluation.
+    """
+    returns = _validated_return_series(returns)
+    if returns is None:
+        returns = []
     if len(returns) < MIN_RISK_HISTORY_WEEKS:
         return {
             "annualized_volatility_3y": None,
